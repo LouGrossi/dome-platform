@@ -17,7 +17,7 @@ DECK_CONFIG = {
         'cross_bracing': True,     # Metal cross bracing
         'footings': True,          # Concrete footings
         'railing': True,           # Safety railing system
-        'skirting': True,          # Ventilated skirting
+        'skirting': False,          # Ventilated skirting
         
         # Safety Features
         'drainage_holes': True,    # Water drainage system
@@ -32,35 +32,38 @@ DECK_CONFIG = {
         # Additional Features
         'stairs': False,           # Stair system
         'slope': False,            # Platform slope for drainage
-        'ada_compliance': True     # ADA compliance measures
+        'ada_compliance': True,     # ADA compliance measures
+        'geodesic_dome': False,    # Toggle for geodesic dome
+        'show_hardware': True,        # Show joist hangers, fasteners, etc.
+        'show_blocking': True,        # Show blocking between joists
     },
     
     'platform': {
-        'octagonal_diameter': 21 * 304.8,    # 6400.8 mm (21 feet)
+        'octagonal_diameter': 32 * 304.8,    # 9753.6 mm (32 feet)
         'square_side': 10 * 304.8,           # 3048.0 mm (10 feet)
-        'elevation': 24 * 25.4,              # 609.6 mm (24 inches)
+        'elevation': 18 * 25.4,              # 457.2 mm (18 inches)
         'board_thickness': 1.5 * 25.4        # 38.1 mm (1.5 inches)
     },
     
     'structural': {
         'central_beam': {
-            'width': 2 * (1.5 * 25.4),       # 76.2 mm (2x 1.5 inch boards)
-            'height': 9.25 * 25.4,           # 234.95 mm (9.25 inches)
+            'width': 4 * (1.5 * 25.4),       # 152.4 mm (4x 1.5 inch boards - quadruple 2x8)
+            'height': 7.25 * 25.4,           # 184.15 mm (7.25 inches - standard 2x8)
             'reinforced': True
         },
         'floor_joists': {
             'width': 1.5 * 25.4,             # 38.1 mm (1.5 inches)
-            'height': 9.25 * 25.4,           # 234.95 mm (9.25 inches)
-            'spacing': 16 * 25.4,            # 406.4 mm (16 inches OC)
+            'height': 7.25 * 25.4,           # 184.15 mm (7.25 inches - standard 2x8)
+            'spacing': 12 * 25.4,            # 304.8 mm (12 inches OC - tighter spacing for strength)
             'reinforced': True
         },
         'cross_bracing': {
-            'spacing': 48 * 25.4,            # 1219.2 mm (4 feet)
-            'material': 'metal'
+            'spacing': 32 * 25.4,            # 812.8 mm (32 inches - increased frequency)
+            'material': 'metal'              # Using metal for better rigidity
         },
         'rim_joists': {
             'width': 1.5 * 25.4,             # 38.1 mm (1.5 inches)
-            'height': 9.25 * 25.4            # 234.95 mm (9.25 inches)
+            'height': 7.25 * 25.4            # 184.15 mm (7.25 inches - standard 2x8)
         }
     },
     
@@ -71,16 +74,16 @@ DECK_CONFIG = {
     },
     
     'footings': {
-        'base_diameter': 12 * 25.4,          # 304.8 mm (12 inches)
-        'post_diameter': 6 * 25.4,           # 152.4 mm (6 inches)
+        'base_diameter': 16 * 25.4,          # 406.4 mm (16 inches)
+        'post_diameter': 8 * 25.4,           # 203.2 mm (8 inches)
         'depth': 36 * 25.4,                  # 914.4 mm (36 inches)
-        'max_spacing': 8 * 304.8,            # 2438.4 mm (8 feet)
-        'min_spacing': 4 * 304.8,            # 1219.2 mm (4 feet)
-        'edge_margin': 1 * 304.8             # 304.8 mm (1 foot)
+        'max_spacing': 4 * 304.8,            # 1219.2 mm (4 feet - reduced spacing)
+        'min_spacing': 3 * 304.8,            # 914.4 mm (3 feet - reduced spacing)
+        'edge_margin': 2 * 304.8             # 609.6 mm (2 feet)
     },
     
     'railing': {
-        'height': 39.37 * 25.4,              # 1000.0 mm (1 meter)
+        'height': 36 * 25.4,                 # 914.4 mm (36 inches - residential height)
         'post_size': 4 * 25.4,               # 101.6 mm (4 inches)
         'rail_width': 2 * 25.4,              # 50.8 mm (2 inches)
         'rail_height': 4 * 25.4,             # 101.6 mm (4 inches)
@@ -90,14 +93,62 @@ DECK_CONFIG = {
     
     'skirting': {
         'ventilation_gap': 0.125 * 25.4,     # 3.175 mm (1/8 inch)
-        'lattice_spacing': 2 * 25.4          # 50.8 mm (2 inches)
+        'lattice_spacing': 2 * 25.4,         # 50.8 mm (2 inches)
+        'height': 16.5 * 25.4                # 419.1 mm (16.5 inches - adjusted for elevation)
+    },
+    
+    'dome': {
+        'diameter': 21 * 304.8,    # 21 feet (matching platform)
+        'frequency': 3,            # 3V geodesic dome
+        'strut_diameter': 2 * 25.4,# 2-inch tube diameter
+        'height_factor': 0.95,     # Slightly less than hemisphere
+        'color': (0.7, 0.7, 0.8)   # Light metallic blue
+    },
+    
+    'beam_support': {                        # New configuration section
+        'post_spacing': 4 * 304.8,           # 1219.2 mm (4 feet between posts)
+        'additional_beams': [                # Additional support beams
+            {'offset': -6 * 304.8},          # -6 feet from center (reduced from 8)
+            {'offset': 6 * 304.8}            # 6 feet from center (reduced from 8)
+        ]
+    },
+    
+    'decking': {
+        'board_type': '2x8',
+        'board_width': 7.25 * 25.4,      # 184.15 mm (7.25 inches)
+        'board_thickness': 1.5 * 25.4,    # 38.1 mm (1.5 inches)
+        'gap': 0.125 * 25.4,             # 3.175 mm (1/8 inch)
+        'orientation': 'perpendicular',   # 'perpendicular' or 'parallel' to house
+        'pattern': 'standard',           # 'standard' or 'alternating'
+        'fasteners': {
+            'show': True,
+            'type': 'deck_screw',
+            'size': 3,                    # 3 inch deck screws
+            'spacing': 12 * 25.4          # 304.8 mm (12 inches)
+        }
+    },
+    
+    'hardware': {
+        'joist_hangers': {
+            'show': True,
+            'type': 'double_shear',
+            'thickness': 0.125 * 25.4     # 3.175 mm (1/8 inch)
+        },
+        'post_brackets': {
+            'show': True,
+            'type': 'adjustable',
+            'thickness': 0.25 * 25.4      # 6.35 mm (1/4 inch)
+        },
+        'beam_brackets': {
+            'show': True,
+            'type': 'heavy_duty',
+            'thickness': 0.25 * 25.4      # 6.35 mm (1/4 inch)
+        }
     }
 }
 
 class DeckBuilder:
-    """
-    Deck Builder class implementing all features from the state file
-    """
+    """Deck Builder class implementing all features from the state file"""
     def __init__(self):
         """Initialize deck builder with configuration from state file"""
         try:
@@ -144,17 +195,39 @@ class DeckBuilder:
             raise
 
     def _cleanup_existing_objects(self):
-        """Remove ALL existing deck objects regardless of current feature settings"""
+        """Remove ALL existing deck objects and force redraw"""
         try:
-            # Expanded list of ALL possible object prefixes
+            # Comprehensive list of ALL possible object prefixes
             cleanup_prefixes = [
-                "Platform", "Octagon", "Square",     # Platform components
-                "Post_", "Rail_", "Picket_",         # Railing components
-                "Footing_", "Beam_", "Joist_",       # Structural components
-                "Brace_", "Skirting_", "Panel_",     # Additional components
-                "Deck_", "Support_", "Ventilation_"  # Generic prefixes
+                # Platform components
+                "Platform", "Octagon", "Square", "Deck_Board", 
+                
+                # Structural components
+                "Post_", "Beam_", "Support_Beam_", "Joist_", "Brace_",
+                "Blocking_", "Rim_", "Header_",
+                
+                # Hardware components
+                "Fastener_", "Hanger_", "Bracket_", "PostBracket_", 
+                "BeamBracket_", "JoistHanger_",
+                
+                # Foundation components
+                "Footing_", "Pier_", "Foundation_",
+                
+                # Railing components
+                "Rail_", "Picket_", "Baluster_", "HandRail_",
+                
+                # Additional features
+                "Skirting_", "Panel_", "Trim_", "Cap_",
+                "Ventilation_", "Access_", "Step_", "Stair_",
+                
+                # Dome components
+                "Dome", "DomeStrut_", "DomePanel_", "DomeRib_",
+                
+                # Generic/Legacy prefixes
+                "Deck_", "Support_"
             ]
             
+            # Find all objects to remove
             objects_to_remove = []
             for obj in self.doc.Objects:
                 for prefix in cleanup_prefixes:
@@ -164,43 +237,81 @@ class DeckBuilder:
             
             if objects_to_remove:
                 print(f"Cleaning up {len(objects_to_remove)} existing objects...")
-                for obj in objects_to_remove:
-                    self.doc.removeObject(obj.Name)
                 
-                # Force recompute after cleanup
+                # Remove objects one at a time and recompute periodically
+                for i, obj in enumerate(objects_to_remove):
+                    try:
+                        self.doc.removeObject(obj.Name)
+                        
+                        # Recompute every 100 objects or at the end
+                        if (i + 1) % 100 == 0 or i == len(objects_to_remove) - 1:
+                            self.doc.recompute()
+                            
+                    except Exception as e:
+                        print(f"Failed to remove {obj.Name}: {str(e)}")
+                
+                # Clear internal references
+                self.platform = None
+                self.created_objects = []
+                
+                # Final recompute and GUI update
                 self.doc.recompute()
-                print("Cleanup completed")
                 
+                if App.GuiUp:
+                    Gui.updateGui()
+                    Gui.ActiveDocument.ActiveView.refresh()
+                
+            print("Cleanup completed")
+            
         except Exception as e:
             print(f"Cleanup failed: {str(e)}")
             raise
 
+    def _create_platform_structure(self) -> None:
+        """Create the basic platform structure"""
+        try:
+            # Create octagonal platform shape
+            radius = self.platform_config['octagonal_diameter'] / 2
+            angle = math.pi / 8  # 22.5 degrees for octagon
+            
+            # Create octagon points
+            points = []
+            for i in range(8):
+                current_angle = i * math.pi / 4
+                x = radius * math.cos(current_angle)
+                y = radius * math.sin(current_angle)
+                points.append(Base.Vector(x, y, self.platform_config['elevation']))
+                
+            # Create face from points
+            wire = Part.makePolygon(points + [points[0]])  # Close the polygon
+            face = Part.Face(wire)
+            
+            # Create platform
+            platform = face.extrude(Base.Vector(0, 0, self.platform_config['board_thickness']))
+            
+            # Create platform object
+            self.platform = self.doc.addObject("Part::Feature", "Platform")
+            self.platform.Shape = platform
+            self.platform.ViewObject.ShapeColor = self.materials['wood_color']
+            self.platform.ViewObject.Transparency = 80  # Make it semi-transparent
+            self.created_objects.append(self.platform)
+            
+            print("Platform structure created successfully")
+            
+        except Exception as e:
+            print(f"Platform structure creation failed: {str(e)}")
+            raise
+
     def create_platform(self) -> None:
-        """Create combined octagonal and square platform"""
+        """Create platform with individual deck boards"""
         try:
             print("Creating platform...")
             
-            # Create octagonal platform
-            octagon = self._create_octagonal_platform()
-            square = self._create_square_platform()
+            # Create structural platform (hidden)
+            self._create_platform_structure()
             
-            # Validate shapes before fusion
-            if octagon is None or square is None:
-                raise ValueError("Failed to create platform shapes")
-            
-            # Combine platforms using boolean fusion
-            fusion = self.doc.addObject("Part::Fuse", "Platform")
-            fusion.Base = octagon
-            fusion.Tool = square
-            
-            # Set material color
-            fusion.ViewObject.ShapeColor = self.materials['wood_color']
-            
-            # Force recompute to ensure proper fusion
-            self.doc.recompute()
-            
-            self.platform = fusion
-            self.created_objects.append(fusion)
+            # Create individual deck boards
+            self.create_deck_boards()
             
             print("Platform created successfully")
             
@@ -215,6 +326,9 @@ class DeckBuilder:
             
             # Create central beam (cross-beam layout)
             self._create_central_beam()
+            
+            # Create additional parallel support beams
+            self.create_additional_support_beams()
             
             # Create floor joists
             self._create_floor_joists()
@@ -371,41 +485,84 @@ class DeckBuilder:
         """Create metal cross-bracing between joists"""
         try:
             brace_config = self.structural_config['cross_bracing']
-            platform_width = self.platform_config['octagonal_diameter']
             joist_height = self.structural_config['floor_joists']['height']
             
+            # Get platform bounds
+            platform_bb = self.platform.Shape.BoundBox
+            
             # Calculate number of braces based on spacing
+            platform_width = min(platform_bb.XLength, platform_bb.YLength)
             num_braces = int(platform_width / brace_config['spacing'])
             
+            # Create a trimming box that represents the platform volume
+            trim_box = Part.makeBox(
+                platform_bb.XLength,
+                platform_bb.YLength,
+                joist_height,
+                Base.Vector(
+                    platform_bb.XMin,
+                    platform_bb.YMin,
+                    self.platform_config['elevation'] - joist_height
+                )
+            )
+            
+            # Get the platform shape for trimming
+            platform_shape = self.platform.Shape
+            
             for i in range(num_braces):
-                # Create diagonal braces
                 start_pos = -platform_width/2 + (i * brace_config['spacing'])
                 
-                # Create X-pattern bracing
-                for direction in [-1, 1]:  # Create both diagonals of the X
-                    brace = Part.makeBox(
-                        brace_config['spacing'] * 1.414,  # Length (diagonal)
-                        50.8,  # 2 inches width
-                        3.175,  # 1/8 inch thickness
-                        Base.Vector(
-                            start_pos,
-                            -brace_config['spacing']/2,
-                            self.platform_config['elevation'] - joist_height
+                # Create test box for intersection
+                test_box = Part.makeBox(
+                    brace_config['spacing'],
+                    brace_config['spacing'],
+                    10,
+                    Base.Vector(
+                        start_pos
+                    )
+                )
+                
+                # Check intersection with platform
+                intersection = test_box.common(platform_shape)
+                if not intersection.isNull():
+                    # Create X-pattern bracing only where platform exists
+                    for direction in [-1, 1]:
+                        # Calculate diagonal length based on spacing
+                        diagonal_length = brace_config['spacing'] * 1.414  # √2 * spacing
+                        
+                        # Create initial brace
+                        brace = Part.makeBox(
+                            diagonal_length,  # length
+                            50.8,            # width (2 inches)
+                            3.175,           # height (1/8 inch thickness)
+                            Base.Vector(
+                                start_pos - diagonal_length/2,
+                                -25.4,
+                                self.platform_config['elevation'] - joist_height/2
+                            )
                         )
-                    )
-                    
-                    # Rotate for diagonal
-                    angle = 45 * direction
-                    brace.rotate(
-                        Base.Vector(start_pos, 0, self.platform_config['elevation'] - joist_height),
-                        Base.Vector(0, 0, 1),
-                        angle
-                    )
-                    
-                    brace_obj = self.doc.addObject("Part::Feature", f"Brace_{len(self.created_objects)}")
-                    brace_obj.Shape = brace
-                    brace_obj.ViewObject.ShapeColor = self.materials['metal_color']
-                    self.created_objects.append(brace_obj)
+                        
+                        # Rotate for diagonal
+                        angle = 45 * direction
+                        rotation_center = Base.Vector(
+                            start_pos,
+                            0,
+                            self.platform_config['elevation'] - joist_height/2
+                        )
+                        brace.rotate(rotation_center, Base.Vector(0, 0, 1), angle)
+                        
+                        # Trim brace to platform bounds
+                        trimmed_brace = brace.common(trim_box)
+                        
+                        # Only create the brace if it has valid geometry after trimming
+                        if not trimmed_brace.isNull() and trimmed_brace.Volume > 0:
+                            brace_obj = self.doc.addObject("Part::Feature", f"Brace_{len(self.created_objects)}")
+                            brace_obj.Shape = trimmed_brace
+                            brace_obj.ViewObject.ShapeColor = self.materials['metal_color']
+                            self.created_objects.append(brace_obj)
+            
+            # Force recompute after creating all braces
+            self.doc.recompute()
                     
         except Exception as e:
             print(f"Cross bracing creation failed: {str(e)}")
@@ -1117,6 +1274,566 @@ class DeckBuilder:
             print(f"Component spacing validation failed: {str(e)}")
             return False
 
+    def create_geodesic_dome(self) -> None:
+        """Create geodesic dome on top of the platform"""
+        try:
+            if not self.features.get('geodesic_dome', False):
+                return
+            
+            print("Creating geodesic dome...")
+            dome_config = self.config['dome']
+            
+            # Calculate basic dome parameters
+            radius = dome_config['diameter'] / 2
+            frequency = dome_config['frequency']
+            strut_radius = dome_config['strut_diameter'] / 2
+            height = radius * dome_config['height_factor']
+            
+            # Generate icosahedron vertices (normalized)
+            phi = (1 + math.sqrt(5)) / 2  # Golden ratio
+            norm = math.sqrt(phi * phi + 1)
+            
+            vertices = [
+                (phi/norm, 1/norm, 0), (-phi/norm, 1/norm, 0),
+                (phi/norm, -1/norm, 0), (-phi/norm, -1/norm, 0),
+                (1/norm, 0, phi/norm), (-1/norm, 0, phi/norm),
+                (1/norm, 0, -phi/norm), (-1/norm, 0, -phi/norm),
+                (0, phi/norm, 1/norm), (0, -phi/norm, 1/norm),
+                (0, phi/norm, -1/norm), (0, -phi/norm, -1/norm)
+            ]
+            
+            # Scale vertices to dome radius
+            vertices = [(x*radius, y*radius, z*radius) for x, y, z in vertices]
+            
+            # Define faces for icosahedron (only upper hemisphere)
+            faces = [
+                (0, 8, 4), (0, 5, 8), (2, 4, 9),
+                (2, 9, 3), (1, 8, 5), (1, 5, 3),
+                (0, 4, 2), (1, 3, 5), (0, 2, 8),
+                (1, 5, 8)
+            ]
+            
+            def subdivide_triangle(v1, v2, v3, depth):
+                if depth == 0:
+                    return [(v1, v2, v3)]
+                
+                # Calculate midpoints
+                def midpoint(p1, p2):
+                    x = (p1[0] + p2[0])/2
+                    y = (p1[1] + p2[1])/2
+                    z = (p1[2] + p2[2])/2
+                    mid = (x, y, z)
+                    # Project to sphere
+                    length = math.sqrt(sum(c*c for c in mid))
+                    return tuple(c * radius / length for c in mid)
+                
+                v12 = midpoint(v1, v2)
+                v23 = midpoint(v2, v3)
+                v31 = midpoint(v3, v1)
+                
+                return (
+                    subdivide_triangle(v1, v12, v31, depth - 1) +
+                    subdivide_triangle(v12, v2, v23, depth - 1) +
+                    subdivide_triangle(v31, v23, v3, depth - 1) +
+                    subdivide_triangle(v12, v23, v31, depth - 1)
+                )
+            
+            # Generate all struts
+            struts = set()
+            for face in faces:
+                triangles = subdivide_triangle(
+                    vertices[face[0]],
+                    vertices[face[1]],
+                    vertices[face[2]],
+                    int(math.log2(frequency))
+                )
+                
+                for triangle in triangles:
+                    # Only include struts above XY plane
+                    if all(v[2] >= 0 for v in triangle):
+                        # Add edges as struts (sorted to avoid duplicates)
+                        struts.add(tuple(sorted([triangle[0], triangle[1]])))
+                        struts.add(tuple(sorted([triangle[1], triangle[2]])))
+                        struts.add(tuple(sorted([triangle[2], triangle[0]])))
+            
+            # Create cylinder for each strut
+            elevation = self.platform_config['elevation'] + self.platform_config['board_thickness']
+            
+            for i, (p1, p2) in enumerate(struts):
+                # Adjust height by elevation
+                p1_elevated = (p1[0], p1[1], p1[2] + elevation)
+                p2_elevated = (p2[0], p2[1], p2[2] + elevation)
+                
+                # Create vector for cylinder direction
+                start = Base.Vector(*p1_elevated)
+                direction = Base.Vector(
+                    p2_elevated[0] - p1_elevated[0],
+                    p2_elevated[1] - p1_elevated[1],
+                    p2_elevated[2] - p1_elevated[2]
+                )
+                length = direction.Length
+                
+                if length > 0:  # Only create valid struts
+                    # Create cylinder
+                    cylinder = Part.makeCylinder(
+                        strut_radius,
+                        length,
+                        start,
+                        direction
+                    )
+                    
+                    # Create strut object
+                    strut = self.doc.addObject("Part::Feature", f"DomeStrut_{i}")
+                    strut.Shape = cylinder
+                    strut.ViewObject.ShapeColor = dome_config['color']
+                    self.created_objects.append(strut)
+            
+            # Force recompute
+            self.doc.recompute()
+            print("Geodesic dome created successfully")
+            
+        except Exception as e:
+            print(f"Geodesic dome creation failed: {str(e)}")
+            raise
+
+    def create_additional_support_beams(self) -> None:
+        """Create additional parallel support beams that stay within platform bounds"""
+        try:
+            print("Creating additional support beams...")
+            beam_config = self.structural_config['central_beam']
+            support_config = self.config['beam_support']
+            
+            # Calculate octagon dimensions
+            radius = self.platform_config['octagonal_diameter'] / 2
+            angle = math.pi / 8  # 22.5 degrees for octagon
+            
+            for beam_data in support_config['additional_beams']:
+                offset = beam_data['offset']
+                
+                # Calculate beam length at this offset using octagon geometry
+                y = abs(offset)
+                if y >= radius * math.cos(angle):
+                    print(f"Skipping beam at offset {y/304.8:.1f}' - beyond safe platform bounds")
+                    continue
+                
+                # Calculate safe beam length (80% of theoretical maximum for
+                max_length = 2 * (radius * math.cos(angle) - y * math.tan(angle))
+                beam_length = 0.8 * max_length  # Add safety margin
+                
+                if beam_length > 0:
+                    # Create X-axis parallel beam
+                    beam = Part.makeBox(
+                        beam_length,
+                        beam_config['width'],
+                        beam_config['height'],
+                        Base.Vector(
+                            -beam_length/2,  # Center the beam
+                            -beam_config['width']/2 + offset,
+                            self.platform_config['elevation'] - beam_config['height']
+                        )
+                    )
+                    
+                    beam_obj = self.doc.addObject("Part::Feature", f"Support_Beam_X_{len(self.created_objects)}")
+                    beam_obj.Shape = beam
+                    beam_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                    self.created_objects.append(beam_obj)
+                    print(f"Created support beam at {offset/304.8:.1f}' offset with length {beam_length/304.8:.1f}'")
+            
+            self.doc.recompute()
+            print("Additional support beams created successfully")
+            
+        except Exception as e:
+            print(f"Additional support beam creation failed: {str(e)}")
+            raise
+
+    def create_deck_boards(self) -> None:
+        """Create individual deck boards with proper spacing and orientation"""
+        try:
+            print("Creating deck boards...")
+            deck_config = self.config['decking']
+            
+            # Get platform bounds
+            platform_bb = self.platform.Shape.BoundBox
+            
+            # Calculate board dimensions and spacing
+            board_width = deck_config['board_width']
+            board_thickness = deck_config['board_thickness']
+            gap = deck_config['gap']
+            
+            # Determine orientation and starting point
+            is_perpendicular = deck_config['orientation'] == 'perpendicular'
+            
+            # Create a slightly larger bounding box for intersection testing
+            test_box = Part.makeBox(
+                platform_bb.XLength + 100,
+                platform_bb.YLength + 100,
+                board_thickness,
+                Base.Vector(
+                    platform_bb.XMin - 50,
+                    platform_bb.YMin - 50,
+                    self.platform_config['elevation']
+                )
+            )
+            
+            # Get intersection with platform to find valid area
+            platform_area = test_box.common(self.platform.Shape)
+            
+            # Calculate number of boards needed
+            if is_perpendicular:
+                span = platform_bb.XLength
+                spacing = board_width + gap
+                num_boards = int(platform_bb.YLength / spacing) + 1
+            else:
+                span = platform_bb.YLength
+                spacing = board_width + gap
+                num_boards = int(platform_bb.XLength / spacing) + 1
+            
+            # Create boards
+            for i in range(num_boards):
+                position = -span/2 + (i * spacing)
+                
+                # Create initial board
+                if is_perpendicular:
+                    board = Part.makeBox(
+                        span + 100,  # Make it longer than needed
+                        board_width,
+                        board_thickness,
+                        Base.Vector(
+                            platform_bb.XMin - 50,
+                            position,
+                            self.platform_config['elevation']
+                        )
+                    )
+                else:
+                    board = Part.makeBox(
+                        board_width,
+                        span + 100,  # Make it longer than needed
+                        board_thickness,
+                        Base.Vector(
+                            position,
+                            platform_bb.YMin - 50,
+                            self.platform_config['elevation']
+                        )
+                    )
+                
+                # Trim board to platform shape
+                trimmed_board = board.common(platform_area)
+                
+                if not trimmed_board.isNull():
+                    board_obj = self.doc.addObject("Part::Feature", f"Deck_Board_{i}")
+                    board_obj.Shape = trimmed_board
+                    board_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                    self.created_objects.append(board_obj)
+                    
+                    # Add fasteners if enabled
+                    if deck_config['fasteners']['show']:
+                        self._create_board_fasteners(board_obj, i)
+            
+            self.doc.recompute()
+            print("Deck boards created successfully")
+            
+        except Exception as e:
+            print(f"Deck board creation failed: {str(e)}")
+            raise
+
+    def _create_board_fasteners(self, board_obj, board_index):
+        """Create fasteners for a deck board"""
+        try:
+            fastener_config = self.config['decking']['fasteners']
+            spacing = fastener_config['spacing']
+            
+            # Get board bounds
+            bb = board_obj.Shape.BoundBox
+            
+            # Calculate fastener positions along board length
+            length = max(bb.XLength, bb.YLength)
+            num_fasteners = int(length / spacing) + 1
+            
+            for i in range(num_fasteners):
+                position = i * spacing
+                
+                # Create fastener representation (small cylinder)
+                fastener = Part.makeCylinder(
+                    2.5,  # 5mm diameter
+                    fastener_config['size'] * 25.4,  # Convert inches to mm
+                    Base.Vector(
+                        bb.XMin + (position if bb.XLength > bb.YLength else bb.XLength/2),
+                        bb.YMin + (bb.YLength/2 if bb.XLength > bb.YLength else position),
+                        self.platform_config['elevation']
+                    )
+                )
+                
+                fastener_obj = self.doc.addObject("Part::Feature", f"Fastener_{board_index}_{i}")
+                fastener_obj.Shape = fastener
+                fastener_obj.ViewObject.ShapeColor = self.materials['metal_color']
+                self.created_objects.append(fastener_obj)
+            
+        except Exception as e:
+            print(f"Fastener creation failed: {str(e)}")
+            raise
+
+    def create_hardware(self) -> None:
+        """Create joist hangers, post brackets, and beam brackets"""
+        try:
+            if not self.features.get('show_hardware', False):
+                return
+            
+            print("Creating hardware...")
+            hardware_config = self.config['hardware']
+            
+            # Create joist hangers
+            if hardware_config['joist_hangers']['show']:
+                self._create_joist_hangers()
+            
+            # Create post brackets
+            if hardware_config['post_brackets']['show']:
+                self._create_post_brackets()
+            
+            # Create beam brackets
+            if hardware_config['beam_brackets']['show']:
+                self._create_beam_brackets()
+            
+            print("Hardware created successfully")
+            
+        except Exception as e:
+            print(f"Hardware creation failed: {str(e)}")
+            raise
+
+    def _create_joist_hangers(self) -> None:
+        """Create joist hangers at beam intersections"""
+        try:
+            hanger_config = self.config['hardware']['joist_hangers']
+            joist_config = self.structural_config['floor_joists']
+            
+            # Find all joists
+            joists = [obj for obj in self.created_objects if obj.Name.startswith("Joist_")]
+            beams = [obj for obj in self.created_objects if obj.Name.startswith("Beam_") or 
+                    obj.Name.startswith("Support_Beam_")]
+            
+            # Get platform bounds for validation
+            platform_bb = self.platform.Shape.BoundBox
+            
+            for joist in joists:
+                joist_bb = joist.Shape.BoundBox
+                
+                for beam in beams:
+                    beam_bb = beam.Shape.BoundBox
+                    
+                    # Check if joist intersects beam within platform bounds
+                    if (self._objects_intersect(joist, beam) and
+                        platform_bb.isInside(beam_bb.Center)):
+                        
+                        # Create hanger geometry
+                        hanger = self._create_hanger_shape(
+                            joist_bb,
+                            beam_bb,
+                            hanger_config['thickness']
+                        )
+                        
+                        # Validate hanger position is within platform
+                        hanger_bb = hanger.BoundBox
+                        if platform_bb.isInside(hanger_bb.Center):
+                            hanger_obj = self.doc.addObject("Part::Feature", f"Hanger_{joist.Name}_{beam.Name}")
+                            hanger_obj.Shape = hanger
+                            hanger_obj.ViewObject.ShapeColor = self.materials['metal_color']
+                            self.created_objects.append(hanger_obj)
+                    
+        except Exception as e:
+            print(f"Joist hanger creation failed: {str(e)}")
+            raise
+
+    def create_blocking(self) -> None:
+        """Create blocking between joists"""
+        try:
+            if not self.features.get('show_blocking', False):
+                return
+            
+            print("Creating blocking...")
+            joist_config = self.structural_config['floor_joists']
+            
+            # Find all joists
+            joists = [obj for obj in self.created_objects if obj.Name.startswith("Joist_")]
+            
+            # Create blocking at third points
+            for i in range(len(joists) - 1):
+                current_joist = joists[i]
+                next_joist = joists[i + 1]
+                
+                # Calculate blocking positions (at thirds)
+                bb = current_joist.Shape.BoundBox
+                length = bb.YLength
+                positions = [length/3, 2*length/3]
+                
+                for pos in positions:
+                    block = Part.makeBox(
+                        joist_config['width'],
+                        next_joist.Shape.BoundBox.XMin - current_joist.Shape.BoundBox.XMax,
+                        joist_config['height'],
+                        Base.Vector(
+                            current_joist.Shape.BoundBox.XMax,
+                            bb.YMin + pos - joist_config['width']/2,
+                            bb.ZMin
+                        )
+                    )
+                    
+                    block_obj = self.doc.addObject("Part::Feature", f"Blocking_{len(self.created_objects)}")
+                    block_obj.Shape = block
+                    block_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                    self.created_objects.append(block_obj)
+                    
+            print("Blocking created successfully")
+            
+        except Exception as e:
+            print(f"Blocking creation failed: {str(e)}")
+            raise
+
+    def _create_hanger_shape(self, joist_bb, beam_bb, thickness):
+        """Create a simplified joist hanger shape"""
+        try:
+            # Create basic U shape for hanger
+            width = joist_bb.XLength + 2 * thickness
+            height = joist_bb.ZLength + thickness
+            depth = joist_bb.YLength / 4  # Reduce depth to 1/4 of joist length
+            
+            # Base plate
+            base = Part.makeBox(width, depth, height)
+            
+            # Side plates
+            left = Part.makeBox(depth, thickness, height,
+                              Base.Vector(0, 0, 0))
+            right = Part.makeBox(depth, thickness, height,
+                                   Base.Vector(width - depth, 0, 0))
+            
+            # Combine shapes
+            hanger = base.fuse([left, right])
+            
+            # Position at intersection
+            intersection_point = self._get_intersection_point(joist_bb, beam_bb)
+            if intersection_point:
+                hanger.translate(Base.Vector(
+                    joist_bb.XMin - thickness,
+                    intersection_point.y - depth/2,
+                    joist_bb.ZMin - thickness
+                ))
+            
+            return hanger
+            
+        except Exception as e:
+            print(f"Hanger shape creation failed: {str(e)}")
+            raise
+
+    def _get_intersection_point(self, bb1, bb2):
+        """Get the intersection point of two bounding boxes"""
+        try:
+            # Calculate intersection point at center of overlap
+            x = max(bb1.XMin, bb2.XMin) + (min(bb1.XMax, bb2.XMax) - max(bb1.XMin, bb2.XMin))/2
+            y = max(bb1.YMin, bb2.YMin) + (min(bb1.YMax, bb2.YMax) - max(bb1.YMin, bb2.YMin))/2
+            z = max(bb1.ZMin, bb2.ZMin) + (min(bb1.ZMax, bb2.ZMax) - max(bb1.ZMin, bb2.ZMin))/2
+            
+            return Base.Vector(x, y, z)
+            
+        except Exception:
+            return None
+
+    def _objects_intersect(self, obj1, obj2):
+        """Check if two objects intersect"""
+        try:
+            return not obj1.Shape.common(obj2.Shape).isNull()
+        except Exception:
+            return False
+
+    def _create_post_brackets(self) -> None:
+        """Create brackets for railing posts"""
+        try:
+            bracket_config = self.config['hardware']['post_brackets']
+            thickness = bracket_config['thickness']
+            
+            # Find all posts
+            posts = [obj for obj in self.created_objects if obj.Name.startswith("Post_")]
+            
+            for post in posts:
+                bb = post.Shape.BoundBox
+                
+                # Create L-shaped bracket
+                width = bb.XLength + 2 * thickness
+                height = bb.ZLength / 4  # Bracket covers 1/4 of post height
+                depth = bb.YLength + 2 * thickness
+                
+                # Base plate
+                base = Part.makeBox(width, depth, thickness)
+                
+                # Vertical plate
+                vertical = Part.makeBox(thickness, depth, height,
+                                      Base.Vector(0, 0, 0))
+                
+                # Combine shapes
+                bracket = base.fuse(vertical)
+                
+                # Position at post base
+                bracket.translate(Base.Vector(
+                    bb.XMin - thickness,
+                    bb.YMin - thickness,
+                    self.platform_config['elevation']
+                ))
+                
+                bracket_obj = self.doc.addObject("Part::Feature", f"PostBracket_{post.Name}")
+                bracket_obj.Shape = bracket
+                bracket_obj.ViewObject.ShapeColor = self.materials['metal_color']
+                self.created_objects.append(bracket_obj)
+            
+        except Exception as e:
+            print(f"Post bracket creation failed: {str(e)}")
+            raise
+
+    def _create_beam_brackets(self) -> None:
+        """Create brackets for beam connections"""
+        try:
+            bracket_config = self.config['hardware']['beam_brackets']
+            thickness = bracket_config['thickness']
+            
+            # Find beams and support beams
+            beams = [obj for obj in self.created_objects 
+                    if obj.Name.startswith("Beam_") or 
+                    obj.Name.startswith("Support_Beam_")]
+            
+            for beam in beams:
+                bb = beam.Shape.BoundBox
+                
+                # Create U-shaped bracket
+                width = bb.XLength + 2 * thickness
+                height = bb.ZLength + thickness
+                depth = thickness
+                
+                # Base plate
+                base = Part.makeBox(width, depth, height)
+                
+                # Side plates
+                left = Part.makeBox(depth, bb.YLength/4, height,
+                                  Base.Vector(0, 0, 0))
+                right = Part.makeBox(depth, bb.YLength/4, height,
+                                   Base.Vector(width - depth, 0, 0))
+                
+                # Combine shapes
+                bracket = base.fuse([left, right])
+                
+                # Create brackets at both ends of beam
+                for i, y_pos in enumerate([bb.YMin, bb.YMax - bb.YLength/4]):
+                    bracket_copy = bracket.copy()
+                    bracket_copy.translate(Base.Vector(
+                        bb.XMin - thickness,
+                        y_pos,
+                        bb.ZMin - thickness
+                    ))
+                    
+                    bracket_obj = self.doc.addObject("Part::Feature", f"BeamBracket_{beam.Name}_{i}")
+                    bracket_obj.Shape = bracket_copy
+                    bracket_obj.ViewObject.ShapeColor = self.materials['metal_color']
+                    self.created_objects.append(bracket_obj)
+            
+        except Exception as e:
+            print(f"Beam bracket creation failed: {str(e)}")
+            raise
+
 if __name__ == '__main__':
     try:
         # Initialize the document
@@ -1134,8 +1851,9 @@ if __name__ == '__main__':
         
         if features['platform']:
             print("Creating deck platform...")
+            initial_count = len(deck.created_objects)
             deck.create_platform()
-            print(f"Platform objects created: {[obj.Name for obj in deck.created_objects[-2:]]}")
+            print(f"Platform objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
         
         if any([features['central_beam'], features['floor_joists'], 
                features['rim_joists'], features['cross_bracing']]):
@@ -1162,6 +1880,24 @@ if __name__ == '__main__':
             deck.create_skirting()
             print(f"Skirting objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
         
+        if features['geodesic_dome']:
+            print("Creating geodesic dome...")
+            initial_count = len(deck.created_objects)
+            deck.create_geodesic_dome()
+            print(f"Dome objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+        
+        if features['show_hardware']:
+            print("Creating hardware...")
+            initial_count = len(deck.created_objects)
+            deck.create_hardware()
+            print(f"Hardware objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+        
+        if features['show_blocking']:
+            print("Creating blocking...")
+            initial_count = len(deck.created_objects)
+            deck.create_blocking()
+            print(f"Blocking objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            
         # Validate construction
         if not deck._validate_structural_integrity():
             print("Warning: Structural validation failed")
