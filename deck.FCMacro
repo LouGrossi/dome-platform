@@ -195,20 +195,32 @@ class DeckBuilder:
             raise
 
     def _cleanup_existing_objects(self) -> None:
-        """Remove all existing deck objects from the document"""
+        """Remove all existing deck-related objects from the document."""
         try:
-            num_objects = len(self.doc.Objects)
-            print(f"Cleaning up {num_objects} existing objects...")
-            objects_to_remove = []
+            print(f"Cleaning up {len(self.doc.Objects)} existing objects...")
             
-            # Collect all objects that match our naming patterns
+            # List of all prefixes and keywords to match for cleanup
+            cleanup_patterns = [
+                'Platform',
+                'Deck_Board_',
+                'Beam_',
+                'Support_Beam_',
+                'Joist_',
+                'Blocking_',
+                'Brace_',
+                'Footing_',
+                'Post_',
+                'Rail_',
+                'Picket_',
+                'Fastener_',
+                'Hardware_',
+                'PostBracket_'
+            ]
+            
+            # Collect objects to remove
+            objects_to_remove = []
             for obj in self.doc.Objects:
-                if any(obj.Name.startswith(prefix) for prefix in [
-                    "Deck_", "Platform", "Beam_", "Support_", "Joist_",
-                    "Brace_", "Footing_", "Post_", "Rail_", "Picket_",
-                    "Blocking_", "Fastener_", "Hanger_", "PostBracket_",
-                    "BeamBracket_", "Parts_List"
-                ]):
+                if any(obj.Name.startswith(pattern) for pattern in cleanup_patterns):
                     objects_to_remove.append(obj)
             
             # Remove collected objects
@@ -1405,7 +1417,7 @@ class DeckBuilder:
                             -beam_config['width']/2 + offset,
                             self.platform_config['elevation'] - beam_config['height']
                         )
-                    )
+                    )  # Added missing closing parenthesis
                     
                     beam_obj = self.doc.addObject("Part::Feature", f"Support_Beam_X_{len(self.created_objects)}")
                     beam_obj.Shape = beam
@@ -1809,34 +1821,72 @@ class DeckBuilder:
             raise
 
     def create_parts_list(self) -> None:
-        """Create a parts list annotation in the 3D view."""
+        """Create a parts list annotation on the drawing."""
         try:
-            print("Generating parts list...")
-            if hasattr(self, 'platform') and self.platform and self.created_objects:
-                # Get platform bounds
-                platform_bb = self.platform.Shape.BoundBox
+            if self.platform and self.created_objects:
+                print("Generating parts list...")
+                parts = self._calculate_parts_list()
                 
-                # Calculate placement - offset from deck edge by 2 feet
-                x_offset = platform_bb.XMax + 609.6  # 24 inches = 609.6mm
-                y_offset = platform_bb.YMin  # Align with platform edge
-                z_offset = platform_bb.ZMax  # Place at deck height
+                # Generate formatted text
+                text = "PARTS LIST\n"
+                text += "-" * 40 + "\n\n"
                 
-                # Create text content
-                text = ["MATERIALS ORDER LIST:", ""]
-                for category, items in self._calculate_parts_list().items():
-                    text.append(f"{category}:")
-                    text.extend(f"  - {item}" for item in items)
-                    text.append("")
+                for category, items in parts.items():
+                    if items:
+                        text += f"{category.upper()}\n"
+                        text += "-" * 20 + "\n"
+                        for item in items:
+                            text += f"1x {item}\n"
+                        text += "\n"
                 
-                # Create text using Draft.make_text()
-                annotation = Draft.make_text(text, App.Vector(x_offset, y_offset, z_offset))
+                # Calculate text box size based on content
+                line_count = text.count('\n') + 1
+                max_line_length = max(len(line) for line in text.split('\n'))
                 
-                # Set properties
-                annotation.Label = "Parts_List"
-                annotation.ViewObject.FontSize = 12
+                # Size calculations (in mm)
+                char_width = 15  # Width per character at 24pt
+                line_height = 30  # Height per line at 24pt
+                padding = 100    # Padding around text
+                
+                width = (max_line_length * char_width) + (padding * 2)  # Double padding for left and right
+                height = (line_count * line_height) + (padding * 2)     # Double padding for top and bottom
+                
+                # Create annotation with offset from platform
+                platform_center = self.platform.Shape.BoundBox.Center
+                placement = Base.Vector(
+                    platform_center.x + self.platform.Shape.BoundBox.XLength,  # Place to the right
+                    platform_center.y,  # Center vertically
+                    self.config['platform']['elevation'] + 500  # Raise above platform
+                )
+                
+                # Adjust text placement to top-left of box
+                text_placement = Base.Vector(
+                    placement.x - width/2 + padding,  # Left align with padding
+                    placement.y + height/2 - padding,  # Top align with padding
+                    placement.z
+                )
+                
+                # Create text annotation
+                annotation = Draft.make_text(text.split('\n'), text_placement)
+                annotation.ViewObject.FontSize = 24  # 24 point font
+                annotation.ViewObject.TextColor = (0.0, 0.0, 0.0)  # Black text
+                annotation.ViewObject.Justification = "Left"
+                
+                # Create border
+                border_points = [
+                    Base.Vector(placement.x - width/2, placement.y - height/2, placement.z),
+                    Base.Vector(placement.x + width/2, placement.y - height/2, placement.z),
+                    Base.Vector(placement.x + width/2, placement.y + height/2, placement.z),
+                    Base.Vector(placement.x - width/2, placement.y + height/2, placement.z),
+                    Base.Vector(placement.x - width/2, placement.y - height/2, placement.z)
+                ]
+                
+                border = Draft.make_wire(border_points, closed=True)
+                border.ViewObject.LineColor = (0.0, 0.0, 0.0)
+                border.ViewObject.LineWidth = 1
                 
                 # Add to created objects
-                self.created_objects.append(annotation.Name)
+                self.created_objects.extend([annotation.Name, border.Name])
                 
                 # Force recompute
                 self.doc.recompute()
