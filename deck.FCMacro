@@ -1,0 +1,1178 @@
+import FreeCAD as App
+import Part
+import Draft
+import math
+from FreeCAD import Base
+import FreeCADGui as Gui
+from typing import List, Tuple, Optional, Dict, Any
+
+# Configuration based on state file
+DECK_CONFIG = {
+    'features': {
+        # Core Features
+        'platform': True,          # Base platform
+        'central_beam': True,      # Central support beam
+        'floor_joists': True,      # Floor joists
+        'rim_joists': True,        # Perimeter joists
+        'cross_bracing': True,     # Metal cross bracing
+        'footings': True,          # Concrete footings
+        'railing': True,           # Safety railing system
+        'skirting': True,          # Ventilated skirting
+        
+        # Safety Features
+        'drainage_holes': True,    # Water drainage system
+        'ventilation_gaps': True,  # Under-deck ventilation
+        
+        # Structural Features
+        'dome_support': True,      # Additional reinforcement for dome
+        'deep_footings': False,    # 48-inch footings for frost protection
+        'beam_reinforcement': True,# Extra beam support
+        'joist_reinforcement': True,# Extra joist support
+        
+        # Additional Features
+        'stairs': False,           # Stair system
+        'slope': False,            # Platform slope for drainage
+        'ada_compliance': True     # ADA compliance measures
+    },
+    
+    'platform': {
+        'octagonal_diameter': 21 * 304.8,    # 6400.8 mm (21 feet)
+        'square_side': 10 * 304.8,           # 3048.0 mm (10 feet)
+        'elevation': 24 * 25.4,              # 609.6 mm (24 inches)
+        'board_thickness': 1.5 * 25.4        # 38.1 mm (1.5 inches)
+    },
+    
+    'structural': {
+        'central_beam': {
+            'width': 2 * (1.5 * 25.4),       # 76.2 mm (2x 1.5 inch boards)
+            'height': 9.25 * 25.4,           # 234.95 mm (9.25 inches)
+            'reinforced': True
+        },
+        'floor_joists': {
+            'width': 1.5 * 25.4,             # 38.1 mm (1.5 inches)
+            'height': 9.25 * 25.4,           # 234.95 mm (9.25 inches)
+            'spacing': 16 * 25.4,            # 406.4 mm (16 inches OC)
+            'reinforced': True
+        },
+        'cross_bracing': {
+            'spacing': 48 * 25.4,            # 1219.2 mm (4 feet)
+            'material': 'metal'
+        },
+        'rim_joists': {
+            'width': 1.5 * 25.4,             # 38.1 mm (1.5 inches)
+            'height': 9.25 * 25.4            # 234.95 mm (9.25 inches)
+        }
+    },
+    
+    'materials': {
+        'wood_color': (0.85, 0.75, 0.60),      # Light wood color (RGB)
+        'metal_color': (0.70, 0.70, 0.70),      # Steel gray color (RGB)
+        'concrete_color': (0.80, 0.80, 0.80)    # Light gray color (RGB)
+    },
+    
+    'footings': {
+        'base_diameter': 12 * 25.4,          # 304.8 mm (12 inches)
+        'post_diameter': 6 * 25.4,           # 152.4 mm (6 inches)
+        'depth': 36 * 25.4,                  # 914.4 mm (36 inches)
+        'max_spacing': 8 * 304.8,            # 2438.4 mm (8 feet)
+        'min_spacing': 4 * 304.8,            # 1219.2 mm (4 feet)
+        'edge_margin': 1 * 304.8             # 304.8 mm (1 foot)
+    },
+    
+    'railing': {
+        'height': 39.37 * 25.4,              # 1000.0 mm (1 meter)
+        'post_size': 4 * 25.4,               # 101.6 mm (4 inches)
+        'rail_width': 2 * 25.4,              # 50.8 mm (2 inches)
+        'rail_height': 4 * 25.4,             # 101.6 mm (4 inches)
+        'picket_size': 2 * 25.4,             # 50.8 mm (2 inches)
+        'picket_spacing': 4 * 25.4           # 101.6 mm (4 inches)
+    },
+    
+    'skirting': {
+        'ventilation_gap': 0.125 * 25.4,     # 3.175 mm (1/8 inch)
+        'lattice_spacing': 2 * 25.4          # 50.8 mm (2 inches)
+    }
+}
+
+class DeckBuilder:
+    """
+    Deck Builder class implementing all features from the state file
+    """
+    def __init__(self):
+        """Initialize deck builder with configuration from state file"""
+        try:
+            self.doc = App.activeDocument()
+            self.created_objects = []
+            self.platform = None
+            self.config = DECK_CONFIG
+            self.features = self.config['features']
+            self.platform_config = self.config['platform']
+            self.structural_config = self.config['structural']
+            self.materials = self.config['materials']
+            
+            # Validate feature configuration
+            self._validate_feature_config()
+            
+            # Clean up existing objects
+            self._cleanup_existing_objects()
+            
+            print("Deck builder initialized successfully")
+            
+        except Exception as e:
+            print(f"Initialization failed: {str(e)}")
+            raise
+
+    def _validate_feature_config(self):
+        """Validate feature configuration and adjust settings as needed"""
+        try:
+            # Check for conflicting features
+            if self.features['stairs'] and not self.features['railing']:
+                print("Warning: Stairs require railing system. Enabling railing.")
+                self.features['railing'] = True
+            
+            # Adjust footing depth based on frost protection setting
+            if self.features['deep_footings']:
+                self.config['footings']['depth'] = 48 * 25.4  # 48 inches for frost protection
+            
+            # Validate dome support requirements
+            if self.features['dome_support']:
+                self.features['beam_reinforcement'] = True
+                self.features['joist_reinforcement'] = True
+                
+        except Exception as e:
+            print(f"Feature validation failed: {str(e)}")
+            raise
+
+    def _cleanup_existing_objects(self):
+        """Remove ALL existing deck objects regardless of current feature settings"""
+        try:
+            # Expanded list of ALL possible object prefixes
+            cleanup_prefixes = [
+                "Platform", "Octagon", "Square",     # Platform components
+                "Post_", "Rail_", "Picket_",         # Railing components
+                "Footing_", "Beam_", "Joist_",       # Structural components
+                "Brace_", "Skirting_", "Panel_",     # Additional components
+                "Deck_", "Support_", "Ventilation_"  # Generic prefixes
+            ]
+            
+            objects_to_remove = []
+            for obj in self.doc.Objects:
+                for prefix in cleanup_prefixes:
+                    if obj.Name.startswith(prefix):
+                        objects_to_remove.append(obj)
+                        break
+            
+            if objects_to_remove:
+                print(f"Cleaning up {len(objects_to_remove)} existing objects...")
+                for obj in objects_to_remove:
+                    self.doc.removeObject(obj.Name)
+                
+                # Force recompute after cleanup
+                self.doc.recompute()
+                print("Cleanup completed")
+                
+        except Exception as e:
+            print(f"Cleanup failed: {str(e)}")
+            raise
+
+    def create_platform(self) -> None:
+        """Create combined octagonal and square platform"""
+        try:
+            print("Creating platform...")
+            
+            # Create octagonal platform
+            octagon = self._create_octagonal_platform()
+            square = self._create_square_platform()
+            
+            # Validate shapes before fusion
+            if octagon is None or square is None:
+                raise ValueError("Failed to create platform shapes")
+            
+            # Combine platforms using boolean fusion
+            fusion = self.doc.addObject("Part::Fuse", "Platform")
+            fusion.Base = octagon
+            fusion.Tool = square
+            
+            # Set material color
+            fusion.ViewObject.ShapeColor = self.materials['wood_color']
+            
+            # Force recompute to ensure proper fusion
+            self.doc.recompute()
+            
+            self.platform = fusion
+            self.created_objects.append(fusion)
+            
+            print("Platform created successfully")
+            
+        except Exception as e:
+            print(f"Platform creation failed: {str(e)}")
+            raise
+
+    def create_support_structure(self) -> None:
+        """Create structural support elements"""
+        try:
+            print("Creating support structure...")
+            
+            # Create central beam (cross-beam layout)
+            self._create_central_beam()
+            
+            # Create floor joists
+            self._create_floor_joists()
+            
+            # Create cross-bracing
+            self._create_cross_bracing()
+            
+            # Create rim joists
+            self._create_rim_joists()
+            
+            print("Support structure created successfully")
+            
+        except Exception as e:
+            print(f"Support structure creation failed: {str(e)}")
+            raise
+
+    def _create_central_beam(self) -> None:
+        """Create reinforced central beam"""
+        try:
+            beam_config = self.structural_config['central_beam']
+            
+            # Create X-axis beam
+            x_beam = Part.makeBox(
+                self.platform_config['octagonal_diameter'],
+                beam_config['width'],
+                beam_config['height'],
+                Base.Vector(
+                    -self.platform_config['octagonal_diameter']/2,
+                    -beam_config['width']/2,
+                    self.platform_config['elevation'] - beam_config['height']
+                )
+            )
+            
+            # Create Y-axis beam
+            y_beam = Part.makeBox(
+                beam_config['width'],
+                self.platform_config['octagonal_diameter'],
+                beam_config['height'],
+                Base.Vector(
+                    -beam_config['width']/2,
+                    -self.platform_config['octagonal_diameter']/2,
+                    self.platform_config['elevation'] - beam_config['height']
+                )
+            )
+            
+            # Create beam objects
+            beam_x = self.doc.addObject("Part::Feature", "Beam_X")
+            beam_x.Shape = x_beam
+            beam_x.ViewObject.ShapeColor = self.materials['wood_color']
+            
+            beam_y = self.doc.addObject("Part::Feature", "Beam_Y")
+            beam_y.Shape = y_beam
+            beam_y.ViewObject.ShapeColor = self.materials['wood_color']
+            
+            self.created_objects.extend([beam_x, beam_y])
+            
+        except Exception as e:
+            print(f"Central beam creation failed: {str(e)}")
+            raise
+
+    def _create_floor_joists(self) -> None:
+        """Create floor joists parallel to X-axis"""
+        try:
+            joist_config = self.structural_config['floor_joists']
+            
+            # Force recompute to ensure platform is ready
+            self.doc.recompute()
+            
+            # Calculate number of joists based on spacing
+            platform_width = self.platform_config['octagonal_diameter']
+            num_joists = int(platform_width / joist_config['spacing']) + 1
+            
+            # Get platform bounds
+            platform_bb = self.platform.Shape.BoundBox
+            
+            # Create a slightly larger bounding box for intersection testing
+            test_height = self.platform_config['elevation'] + 100  # Add some margin
+            test_box = Part.makeBox(
+                platform_bb.XLength + 100,
+                platform_bb.YLength + 100,
+                test_height,
+                Base.Vector(
+                    platform_bb.XMin - 50,
+                    platform_bb.YMin - 50,
+                    0
+                )
+            )
+            
+            # Get intersection with platform to find valid area
+            platform_area = test_box.common(self.platform.Shape)
+            if platform_area.isNull():
+                raise ValueError("Could not determine platform area")
+            
+            # Create joists
+            for i in range(num_joists):
+                position = -platform_width/2 + (i * joist_config['spacing'])
+                
+                # Create initial joist
+                joist = Part.makeBox(
+                    joist_config['width'],
+                    platform_bb.YLength + 100,  # Make it longer than needed
+                    joist_config['height'],
+                    Base.Vector(
+                        position - joist_config['width']/2,
+                        platform_bb.YMin - 50,
+                        self.platform_config['elevation'] - joist_config['height']
+                    )
+                )
+                
+                # Project joist footprint onto platform
+                projection = Part.makeBox(
+                    joist_config['width'],
+                    platform_bb.YLength + 100,
+                    test_height,
+                    Base.Vector(
+                        position - joist_config['width']/2,
+                        platform_bb.YMin - 50,
+                        0
+                    )
+                )
+                
+                # Find intersection with platform area
+                valid_area = projection.common(platform_area)
+                
+                if not valid_area.isNull():
+                    # Get bounds of valid area
+                    valid_bb = valid_area.BoundBox
+                    
+                    # Create final joist with correct dimensions
+                    final_joist = Part.makeBox(
+                        joist_config['width'],
+                        valid_bb.YLength,
+                        joist_config['height'],
+                        Base.Vector(
+                            position - joist_config['width']/2,
+                            valid_bb.YMin,
+                            self.platform_config['elevation'] - joist_config['height']
+                        )
+                    )
+                    
+                    joist_obj = self.doc.addObject("Part::Feature", f"Joist_{i}")
+                    joist_obj.Shape = final_joist
+                    joist_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                    self.created_objects.append(joist_obj)
+            
+            # Final recompute
+            self.doc.recompute()
+                
+        except Exception as e:
+            print(f"Floor joist creation failed: {str(e)}")
+            raise
+
+    def _create_cross_bracing(self) -> None:
+        """Create metal cross-bracing between joists"""
+        try:
+            brace_config = self.structural_config['cross_bracing']
+            platform_width = self.platform_config['octagonal_diameter']
+            joist_height = self.structural_config['floor_joists']['height']
+            
+            # Calculate number of braces based on spacing
+            num_braces = int(platform_width / brace_config['spacing'])
+            
+            for i in range(num_braces):
+                # Create diagonal braces
+                start_pos = -platform_width/2 + (i * brace_config['spacing'])
+                
+                # Create X-pattern bracing
+                for direction in [-1, 1]:  # Create both diagonals of the X
+                    brace = Part.makeBox(
+                        brace_config['spacing'] * 1.414,  # Length (diagonal)
+                        50.8,  # 2 inches width
+                        3.175,  # 1/8 inch thickness
+                        Base.Vector(
+                            start_pos,
+                            -brace_config['spacing']/2,
+                            self.platform_config['elevation'] - joist_height
+                        )
+                    )
+                    
+                    # Rotate for diagonal
+                    angle = 45 * direction
+                    brace.rotate(
+                        Base.Vector(start_pos, 0, self.platform_config['elevation'] - joist_height),
+                        Base.Vector(0, 0, 1),
+                        angle
+                    )
+                    
+                    brace_obj = self.doc.addObject("Part::Feature", f"Brace_{len(self.created_objects)}")
+                    brace_obj.Shape = brace
+                    brace_obj.ViewObject.ShapeColor = self.materials['metal_color']
+                    self.created_objects.append(brace_obj)
+                    
+        except Exception as e:
+            print(f"Cross bracing creation failed: {str(e)}")
+            raise
+
+    def _create_rim_joists(self) -> None:
+        """Create rim joists around platform perimeter"""
+        try:
+            joist_config = self.structural_config['rim_joists']
+            edges = self._detect_platform_edges()
+            
+            for i, edge in enumerate(edges):
+                start = edge.Vertexes[0].Point
+                end = edge.Vertexes[1].Point
+                
+                # Calculate joist dimensions
+                length = edge.Length
+                direction = end.sub(start).normalize()
+                
+                # Create rim joist
+                joist = Part.makeBox(
+                    length,
+                    joist_config['width'],
+                    joist_config['height'],
+                    Base.Vector(
+                        start.x,
+                        start.y,
+                        self.platform_config['elevation'] - joist_config['height']
+                    )
+                )
+                
+                # Rotate to align with edge
+                angle = math.degrees(math.atan2(direction.y, direction.x))
+                joist.rotate(
+                    Base.Vector(start.x, start.y, self.platform_config['elevation'] - joist_config['height']),
+                    Base.Vector(0, 0, 1),
+                    angle
+                )
+                
+                rim_joist = self.doc.addObject("Part::Feature", f"RimJoist_{i}")
+                rim_joist.Shape = joist
+                rim_joist.ViewObject.ShapeColor = self.materials['wood_color']
+                self.created_objects.append(rim_joist)
+                
+        except Exception as e:
+            print(f"Rim joist creation failed: {str(e)}")
+            raise
+
+    def create_footings(self) -> None:
+        """Create footings with specified placement and dimensions"""
+        try:
+            print("Creating footings...")
+            
+            footing_config = self.config['footings']
+            
+            # Calculate footing positions
+            positions = self._calculate_footing_positions()
+            
+            for i, pos in enumerate(positions):
+                # Create base cylinder
+                base = Part.makeCylinder(
+                    footing_config['base_diameter']/2,
+                    footing_config['depth'],
+                    Base.Vector(pos.x, pos.y, -footing_config['depth']),
+                    Base.Vector(0,0,1)
+                )
+                
+                # Create post cylinder
+                post = Part.makeCylinder(
+                    footing_config['post_diameter']/2,
+                    self.platform_config['elevation'],
+                    Base.Vector(pos.x, pos.y, 0),
+                    Base.Vector(0,0,1)
+                )
+                
+                # Combine base and post
+                footing = base.fuse(post)
+                
+                # Create footing object
+                footing_obj = self.doc.addObject("Part::Feature", f"Footing_{i}")
+                footing_obj.Shape = footing
+                footing_obj.ViewObject.ShapeColor = self.materials['concrete_color']
+                
+                self.created_objects.append(footing_obj)
+                
+            print("Footings created successfully")
+            
+        except Exception as e:
+            print(f"Footing creation failed: {str(e)}")
+            raise
+
+    def create_railing(self) -> None:
+        """Create railing system with posts, rails, and pickets"""
+        try:
+            print("Creating railing system...")
+            
+            railing_config = self.config['railing']
+            
+            # Get platform vertices for posts
+            vertices = self._get_platform_vertices()
+            
+            # Create posts at vertices
+            for i, vertex in enumerate(vertices):
+                post = Part.makeBox(
+                    railing_config['post_size'],
+                    railing_config['post_size'],
+                    railing_config['height'],
+                    Base.Vector(
+                        vertex.x - railing_config['post_size']/2,
+                        vertex.y - railing_config['post_size']/2,
+                        self.platform_config['elevation']
+                    )
+                )
+                
+                post_obj = self.doc.addObject("Part::Feature", f"Post_{i}")
+                post_obj.Shape = post
+                post_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                self.created_objects.append(post_obj)
+            
+            # Create horizontal rails and pickets
+            self._create_rails_and_pickets(vertices)
+            
+            print("Railing system created successfully")
+            
+        except Exception as e:
+            print(f"Railing creation failed: {str(e)}")
+            raise
+
+    def create_skirting(self) -> None:
+        """Create skirting with ventilation gaps"""
+        try:
+            print("Creating skirting...")
+            
+            skirting_config = self.config['skirting']
+            
+            # Get platform perimeter
+            edges = self._get_outer_edges()
+            
+            for i, edge in enumerate(edges):
+                # Create skirting panel with gaps
+                panel = self._create_ventilated_panel(edge, skirting_config)
+                
+                panel_obj = self.doc.addObject("Part::Feature", f"Skirting_{i}")
+                panel_obj.Shape = panel
+                panel_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                self.created_objects.append(panel_obj)
+                
+            print("Skirting created successfully")
+            
+        except Exception as e:
+            print(f"Skirting creation failed: {str(e)}")
+            raise
+
+    def _validate_platform_intersection(self, shape: Part.Shape) -> bool:
+        """Check if a shape intersects with the platform"""
+        try:
+            if not hasattr(self, 'platform') or not self.platform:
+                return False
+            return not shape.common(self.platform.Shape).isNull()
+        except Exception as e:
+            print(f"Platform intersection check failed: {str(e)}")
+            return False
+
+    def _is_point_inside_platform(self, point: Base.Vector, margin: float = 304.8) -> bool:
+        """Check if a point is inside the platform shape with margin"""
+        try:
+            if not hasattr(self, 'platform') or not self.platform:
+                return False
+            
+            # Create a 2D point for checking
+            point_2d = Base.Vector(point.x, point.y, self.platform_config['elevation'])
+            
+            # Get the top face of the platform
+            top_face = None
+            for face in self.platform.Shape.Faces:
+                if face.normalAt(0, 0).z > 0:  # Top face
+                    top_face = face
+                    break
+            
+            if top_face:
+                # Create a test point slightly above the platform
+                test_point = Base.Vector(point.x, point.y, self.platform_config['elevation'] + 1)
+                
+                # Check if point projects onto face
+                try:
+                    uv = top_face.Surface.parameter(test_point)
+                    return top_face.isInside(uv[0], uv[1], margin)
+                except:
+                    return False
+            
+            return False
+            
+        except Exception as e:
+            print(f"Point inside check failed: {str(e)}")
+            return False
+
+    def _validate_minimum_spacing(self, positions: List[Base.Vector], min_spacing: float) -> List[Base.Vector]:
+        """Enforce minimum spacing between positions"""
+        try:
+            filtered_positions = []
+            for pos in positions:
+                too_close = False
+                for existing_pos in filtered_positions:
+                    distance = pos.sub(existing_pos).Length
+                    if distance < min_spacing:
+                        too_close = True
+                        break
+                if not too_close:
+                    filtered_positions.append(pos)
+            return filtered_positions
+            
+        except Exception as e:
+            print(f"Minimum spacing validation failed: {str(e)}")
+            return []
+
+    def _detect_platform_edges(self) -> List[Part.Edge]:
+        """Detect platform edges for railing placement"""
+        try:
+            edges = []
+            top_z = self.platform_config['elevation'] + self.platform_config['board_thickness']
+            
+            for edge in self.platform.Shape.Edges:
+                # Check if edge is on the top face
+                if abs(edge.Vertexes[0].Point.z - top_z) < 0.1 and \
+                   abs(edge.Vertexes[1].Point.z - top_z) < 0.1:
+                    if self._is_outer_edge(edge):
+                        edges.append(edge)
+            
+            return edges
+            
+        except Exception as e:
+            print(f"Edge detection failed: {str(e)}")
+            return []
+
+    def _is_outer_edge(self, edge: Part.Edge) -> bool:
+        """Check if an edge is on the outer perimeter"""
+        try:
+            # Count connected faces
+            connected_faces = 0
+            for face in self.platform.Shape.Faces:
+                for e in face.Edges:
+                    if e.isSame(edge):
+                        connected_faces += 1
+            
+            # Outer edges have exactly one connected face
+            return connected_faces == 1
+            
+        except Exception as e:
+            print(f"Outer edge check failed: {str(e)}")
+            return False
+
+    def _validate_structural_integrity(self) -> bool:
+        """Validate structural components"""
+        try:
+            # Check platform existence
+            if not hasattr(self, 'platform') or not self.platform:
+                print("Validation failed: Platform not created")
+                return False
+
+            # Check central beam
+            if not any(obj.Name.startswith("Beam_") for obj in self.created_objects):
+                print("Validation failed: Central beam not created")
+                return False
+
+            # Check joists
+            if not any(obj.Name.startswith("Joist_") for obj in self.created_objects):
+                print("Validation failed: Floor joists not created")
+                return False
+
+            # Check footings
+            if self.features['footings'] and not any(obj.Name.startswith("Footing_") for obj in self.created_objects):
+                print("Validation failed: Footings not created")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(f"Structural validation failed: {str(e)}")
+            return False
+
+    def _create_octagonal_platform(self) -> Part.Feature:
+        """Create octagonal platform shape"""
+        try:
+            diameter = self.platform_config['octagonal_diameter']
+            thickness = self.platform_config['board_thickness']
+            elevation = self.platform_config['elevation']
+            
+            # Create regular octagon
+            polygon = Part.makePolygon([
+                Base.Vector(diameter/2 * math.cos(i * math.pi/4),
+                          diameter/2 * math.sin(i * math.pi/4),
+                          elevation)
+                for i in range(8)
+            ] + [Base.Vector(diameter/2, 0, elevation)])  # Close the polygon
+            
+            # Create face from polygon
+            face = Part.Face(Part.Wire(polygon))
+            
+            # Extrude to create platform
+            platform = face.extrude(Base.Vector(0, 0, thickness))
+            
+            # Create platform object
+            octagon = self.doc.addObject("Part::Feature", "Octagon")
+            octagon.Shape = platform
+            octagon.ViewObject.ShapeColor = self.materials['wood_color']
+            
+            return octagon
+            
+        except Exception as e:
+            print(f"Octagonal platform creation failed: {str(e)}")
+            raise
+
+    def _create_square_platform(self) -> Part.Feature:
+        """Create square platform shape"""
+        try:
+            side = self.platform_config['square_side']
+            thickness = self.platform_config['board_thickness']
+            elevation = self.platform_config['elevation']
+            
+            # Create square platform
+            platform = Part.makeBox(
+                side,
+                side,
+                thickness,
+                Base.Vector(-side/2, -side/2, elevation)
+            )
+            
+            # Create platform object
+            square = self.doc.addObject("Part::Feature", "Square")
+            square.Shape = platform
+            square.ViewObject.ShapeColor = self.materials['wood_color']
+            
+            return square
+            
+        except Exception as e:
+            print(f"Square platform creation failed: {str(e)}")
+            raise
+
+    def _calculate_footing_positions(self) -> List[Base.Vector]:
+        """Calculate footing positions based on platform shape"""
+        try:
+            positions = []
+            footing_config = self.config['footings']
+            
+            # Get platform dimensions
+            platform_width = self.platform_config['octagonal_diameter']
+            
+            # Calculate grid spacing
+            max_spacing = footing_config['max_spacing']
+            min_spacing = footing_config['min_spacing']
+            edge_margin = footing_config['edge_margin']
+            
+            # Create grid of positions
+            x_spans = max(2, math.ceil(platform_width / max_spacing))
+            y_spans = x_spans  # Square grid for octagonal platform
+            
+            x_spacing = platform_width / x_spans
+            y_spacing = platform_width / y_spans
+            
+            # Generate grid positions
+            for i in range(-x_spans, x_spans + 1):
+                for j in range(-y_spans, y_spans + 1):
+                    x = i * x_spacing
+                    y = j * y_spacing
+                    point = Base.Vector(x, y, 0)
+                    
+                    # Check if point is inside platform boundary
+                    if self._is_point_inside_platform(point, edge_margin):
+                        positions.append(point)
+            
+            # Add center support
+            positions.append(Base.Vector(0, 0, 0))
+            
+            # Add octagon vertex supports
+            radius = (platform_width / 2) - edge_margin
+            for i in range(8):
+                angle = i * math.pi / 4
+                x = radius * math.cos(angle)
+                y = radius * math.sin(angle)
+                point = Base.Vector(x, y, 0)
+                positions.append(point)
+            
+            # Filter positions to maintain minimum spacing
+            positions = self._validate_minimum_spacing(positions, min_spacing)
+            
+            print(f"Created {len(positions)} footing positions")
+            return positions
+            
+        except Exception as e:
+            print(f"Footing position calculation failed: {str(e)}")
+            return []
+
+    def _get_platform_vertices(self) -> List[Base.Vector]:
+        """Get platform vertices for railing posts"""
+        try:
+            if not hasattr(self, 'platform') or not self.platform:
+                return []
+            
+            vertices = []
+            top_z = self.platform_config['elevation'] + self.platform_config['board_thickness']
+            
+            # Get unique vertices from the platform's top face
+            for face in self.platform.Shape.Faces:
+                if abs(face.normalAt(0, 0).z - 1.0) < 0.1:  # Top face
+                    for vertex in face.Vertexes:
+                        # Check if vertex is on the outer edge
+                        if self._is_outer_vertex(vertex):
+                            # Create new vector to ensure hashability
+                            pos = Base.Vector(vertex.X, vertex.Y, vertex.Z)
+                            if not any(self._vectors_equal(pos, v) for v in vertices):
+                                vertices.append(pos)
+            
+            return vertices
+            
+        except Exception as e:
+            print(f"Platform vertices detection failed: {str(e)}")
+            return []
+
+    def _vectors_equal(self, v1: Base.Vector, v2: Base.Vector, tolerance: float = 0.1) -> bool:
+        """Compare two vectors with tolerance"""
+        return (abs(v1.x - v2.x) < tolerance and 
+                abs(v1.y - v2.y) < tolerance and 
+                abs(v1.z - v2.z) < tolerance)
+
+    def _is_outer_vertex(self, vertex: Part.Vertex) -> bool:
+        """Check if a vertex is on the outer edge of the platform"""
+        try:
+            # Count number of edges connected to this vertex
+            edge_count = 0
+            for edge in self.platform.Shape.Edges:
+                if (edge.Vertexes[0].Point - vertex.Point).Length < 0.1 or \
+                   (edge.Vertexes[1].Point - vertex.Point).Length < 0.1:
+                    edge_count += 1
+            
+            # Outer vertices have fewer connected edges
+            return edge_count <= 4
+            
+        except Exception as e:
+            print(f"Outer vertex check failed: {str(e)}")
+            return False
+
+    def _create_rails_and_pickets(self, vertices: List[Base.Vector]) -> None:
+        """Create horizontal rails and pickets between posts"""
+        try:
+            railing_config = self.config['railing']
+            edges = self._detect_platform_edges()
+            
+            # Create rails
+            for edge in edges:
+                start = edge.Vertexes[0].Point
+                end = edge.Vertexes[1].Point
+                length = edge.Length
+                direction = end.sub(start).normalize()
+                
+                # Create three rails (top, middle, bottom)
+                heights = [
+                    railing_config['height'],                    # Top rail
+                    railing_config['height'] * 0.5,             # Middle rail
+                    railing_config['height'] * 0.15             # Bottom rail
+                ]
+                
+                for i, height in enumerate(heights):
+                    rail = Part.makeBox(
+                        length,
+                        railing_config['rail_width'],
+                        railing_config['rail_height'],
+                        Base.Vector(
+                            start.x,
+                            start.y - railing_config['rail_width']/2,
+                            self.platform_config['elevation'] + height - railing_config['rail_height']/2
+                        )
+                    )
+                    
+                    # Rotate rail to align with edge
+                    angle = math.degrees(math.atan2(direction.y, direction.x))
+                    rail.rotate(
+                        Base.Vector(start.x, start.y, self.platform_config['elevation'] + height),
+                        Base.Vector(0, 0, 1),
+                        angle
+                    )
+                    
+                    rail_obj = self.doc.addObject("Part::Feature", f"Rail_{len(self.created_objects)}")
+                    rail_obj.Shape = rail
+                    rail_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                    self.created_objects.append(rail_obj)
+                
+                # Create pickets
+                picket_spacing = railing_config['picket_spacing']
+                num_pickets = int(length / picket_spacing) + 1
+                
+                for i in range(num_pickets):
+                    pos = i * picket_spacing
+                    if pos <= length:
+                        picket = Part.makeBox(
+                            railing_config['picket_size'],
+                            railing_config['picket_size'],
+                            railing_config['height'] * 0.8,  # Picket height
+                            Base.Vector(
+                                start.x + direction.x * pos - railing_config['picket_size']/2,
+                                start.y + direction.y * pos - railing_config['picket_size']/2,
+                                self.platform_config['elevation']
+                            )
+                        )
+                        
+                        picket_obj = self.doc.addObject("Part::Feature", f"Picket_{len(self.created_objects)}")
+                        picket_obj.Shape = picket
+                        picket_obj.ViewObject.ShapeColor = self.materials['wood_color']
+                        self.created_objects.append(picket_obj)
+            
+        except Exception as e:
+            print(f"Rails and pickets creation failed: {str(e)}")
+            raise
+
+    def _get_outer_edges(self) -> List[Part.Edge]:
+        """Get vertical edges for skirting placement"""
+        try:
+            if not hasattr(self, 'platform') or not self.platform:
+                return []
+            
+            vertical_edges = []
+            for edge in self.platform.Shape.Edges:
+                # Check if edge is vertical
+                v1 = edge.Vertexes[0].Point
+                v2 = edge.Vertexes[1].Point
+                
+                # Edge is vertical if x,y coordinates are the same
+                if (abs(v1.x - v2.x) < 0.1 and 
+                    abs(v1.y - v2.y) < 0.1 and 
+                    abs(v1.z - v2.z) > self.platform_config['elevation'] / 2):
+                    
+                    if self._is_perimeter_edge(edge):
+                        vertical_edges.append(edge)
+            
+            return vertical_edges
+            
+        except Exception as e:
+            print(f"Vertical edge detection failed: {str(e)}")
+            return []
+
+    def _is_perimeter_edge(self, edge: Part.Edge) -> bool:
+        """Check if an edge is on the perimeter of the platform"""
+        try:
+            # Edge is on perimeter if it has only one adjacent face
+            return len(edge.Faces) == 1
+            
+        except Exception as e:
+            print(f"Perimeter edge check failed: {str(e)}")
+            return False
+
+    def _create_ventilated_panel(self, edge: Part.Edge, config: Dict) -> Part.Shape:
+        """Create skirting panel with ventilation gaps"""
+        try:
+            start = edge.Vertexes[0].Point
+            end = edge.Vertexes[1].Point
+            height = abs(end.z - start.z)
+            width = self.platform_config['board_thickness']
+            
+            # Create base panel
+            panel = Part.makeBox(
+                edge.Length + width,  # Add thickness for overlap
+                width,
+                height,
+                Base.Vector(
+                    min(start.x, end.x) - width/2,
+                    min(start.y, end.y) - width/2,
+                    min(start.z, end.z)
+                )
+            )
+            
+            # Add ventilation gaps
+            gap_size = config['ventilation_gap']
+            lattice_spacing = config['lattice_spacing']
+            
+            # Create ventilation holes
+            holes = []
+            num_gaps = int(edge.Length / lattice_spacing)
+            for i in range(num_gaps):
+                pos = i * lattice_spacing
+                if pos + gap_size < edge.Length:
+                    hole = Part.makeBox(
+                        gap_size,
+                        width * 2,  # Ensure hole goes through panel
+                        height / 3,  # Gap in bottom third for ventilation
+                        Base.Vector(
+                            min(start.x, end.x) + pos - width/2,
+                            min(start.y, end.y) - width,
+                            min(start.z, end.z)
+                        )
+                    )
+                    holes.append(hole)
+            
+            # Cut holes from panel
+            for hole in holes:
+                panel = panel.cut(hole)
+            
+            # Rotate panel to align with edge
+            if abs(start.x - end.x) > 0.1 or abs(start.y - end.y) > 0.1:
+                direction = Base.Vector(end.x - start.x, end.y - start.y, 0).normalize()
+                angle = math.degrees(math.atan2(direction.y, direction.x))
+                panel.rotate(
+                    Base.Vector(start.x, start.y, start.z),
+                    Base.Vector(0, 0, 1),
+                    angle
+                )
+            
+            return panel
+            
+        except Exception as e:
+            print(f"Ventilated panel creation failed: {str(e)}")
+            raise
+
+    def _is_feature_enabled(self, feature_name: str) -> bool:
+        """Check if a specific feature is enabled"""
+        try:
+            return self.features.get(feature_name, False)
+        except Exception as e:
+            print(f"Feature check failed for {feature_name}: {str(e)}")
+            return False
+
+    def _validate_creation(self, obj: Any, name: str) -> bool:
+        """Validate that an object was created successfully"""
+        try:
+            if obj is None:
+                print(f"Failed to create {name}")
+                return False
+            if hasattr(obj, 'Shape') and obj.Shape.isNull():
+                print(f"{name} has null shape")
+                return False
+            return True
+        except Exception as e:
+            print(f"Validation failed for {name}: {str(e)}")
+            return False
+
+    def _validate_object_creation(self, obj: Any, name: str) -> bool:
+        """Validate that an object was created successfully"""
+        if obj is None:
+            print(f"Failed to create {name}")
+            return False
+            
+        if hasattr(obj, 'Shape'):
+            if obj.Shape.isNull():
+                print(f"{name} has null shape")
+                return False
+                
+            if obj.Shape.Volume < 0.000001:  # Check for zero volume
+                print(f"{name} has zero volume")
+                return False
+                
+        return True
+
+    def _log_creation_details(self, component: str, count: int) -> None:
+        """Log details about created objects"""
+        print(f"Created {count} {component} objects:")
+        recent_objects = self.created_objects[-count:]
+        for obj in recent_objects:
+            if hasattr(obj, 'Shape'):
+                print(f"  - {obj.Name}: Volume={obj.Shape.Volume:.2f}, Valid={not obj.Shape.isNull()}")
+            else:
+                print(f"  - {obj.Name}: No shape information")
+
+    def _get_platform_edges(self) -> List[Part.Edge]:
+        """Get all platform edges for component placement"""
+        try:
+            if not hasattr(self, 'platform') or not self.platform:
+                return []
+            
+            all_edges = []
+            top_z = self.platform_config['elevation'] + self.platform_config['board_thickness']
+            
+            for edge in self.platform.Shape.Edges:
+                v1 = edge.Vertexes[0].Point
+                v2 = edge.Vertexes[1].Point
+                
+                # Categorize edge type
+                is_vertical = (abs(v1.x - v2.x) < 0.1 and abs(v1.y - v2.y) < 0.1)
+                is_top = (abs(v1.z - top_z) < 0.1 and abs(v2.z - top_z) < 0.1)
+                
+                if (is_vertical or is_top) and self._is_outer_edge(edge):
+                    all_edges.append(edge)
+            
+            return all_edges
+            
+        except Exception as e:
+            print(f"Edge detection failed: {str(e)}")
+            return []
+
+    def _validate_component_spacing(self) -> bool:
+        """Validate spacing between components"""
+        try:
+            # Get all component positions
+            positions = []
+            for obj in self.created_objects:
+                if hasattr(obj, 'Shape'):
+                    pos = obj.Shape.CenterOfMass
+                    positions.append((obj.Name, pos))
+            
+            # Check minimum spacing between components
+            min_spacing = 25.4  # 1 inch minimum spacing
+            for i, (name1, pos1) in enumerate(positions):
+                for name2, pos2 in positions[i+1:]:
+                    distance = pos1.sub(pos2).Length
+                    if distance < min_spacing:
+                        print(f"Warning: {name1} and {name2} are too close: {distance}mm")
+                        return False
+            
+            return True
+            
+        except Exception as e:
+            print(f"Component spacing validation failed: {str(e)}")
+            return False
+
+if __name__ == '__main__':
+    try:
+        # Initialize the document
+        doc = App.activeDocument()
+        if doc is None:
+            doc = App.newDocument("DeckDesign")
+        
+        # Create deck builder instance and force cleanup
+        deck = DeckBuilder()
+        deck._cleanup_existing_objects()  # Force cleanup before building
+        
+        # Build only enabled components
+        features = deck.config['features']
+        created_objects = []
+        
+        if features['platform']:
+            print("Creating deck platform...")
+            deck.create_platform()
+            print(f"Platform objects created: {[obj.Name for obj in deck.created_objects[-2:]]}")
+        
+        if any([features['central_beam'], features['floor_joists'], 
+               features['rim_joists'], features['cross_bracing']]):
+            print("Creating support structure...")
+            initial_count = len(deck.created_objects)
+            deck.create_support_structure()
+            print(f"Support objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+        
+        if features['footings']:
+            print("Creating footings...")
+            initial_count = len(deck.created_objects)
+            deck.create_footings()
+            print(f"Footing objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+        
+        if features['railing']:
+            print("Creating railing system...")
+            initial_count = len(deck.created_objects)
+            deck.create_railing()
+            print(f"Railing objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+        
+        if features['skirting']:
+            print("Creating skirting...")
+            initial_count = len(deck.created_objects)
+            deck.create_skirting()
+            print(f"Skirting objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+        
+        # Validate construction
+        if not deck._validate_structural_integrity():
+            print("Warning: Structural validation failed")
+        
+        # Force final recompute and update
+        doc.recompute()
+        Gui.SendMsgToActiveView("ViewFit")
+        
+        print(f"Total objects created: {len(deck.created_objects)}")
+        print("Deck creation completed successfully")
+        
+    except Exception as e:
+        print(f"Deck creation failed: {str(e)}")
+        raise
