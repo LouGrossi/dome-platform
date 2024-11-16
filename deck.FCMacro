@@ -308,11 +308,17 @@ class DeckBuilder:
         try:
             print("Creating support structure...")
             
+            # Get beam configurations
+            structural_config = self.config['structural']
+            central_beam_config = structural_config.get('central_beam', {})
+            support_beam_config = structural_config.get('support_beams', {})
+            
             # Create central beam (cross-beam layout)
             self._create_central_beam()
             
             # Create additional parallel support beams
-            self.create_additional_support_beams()
+            if support_beam_config:
+                self.create_additional_support_beams(support_beam_config)
             
             # Create floor joists
             self._create_floor_joists()
@@ -1382,55 +1388,96 @@ class DeckBuilder:
             print(f"Geodesic dome creation failed: {str(e)}")
             raise
 
-    def create_additional_support_beams(self) -> None:
-        """Create additional parallel support beams that stay within platform bounds"""
+    def create_additional_support_beams(self, beam_config: Dict[str, Any]) -> None:
+        """Create additional support beams parallel to central beam
+        
+        Args:
+            beam_config: Configuration dictionary for support beams containing:
+                - spacing: Distance between beams
+                - dimensions: Beam cross-section dimensions
+                - material: Beam material properties
+        """
         try:
-            print("Creating additional support beams...")
-            beam_config = self.structural_config['central_beam']
-            support_config = self.config['beam_support']
+            # Get platform dimensions
+            platform_bb = self.platform.Shape.BoundBox
             
-            # Calculate octagon dimensions
-            radius = self.platform_config['octagonal_diameter'] / 2
-            angle = math.pi / 8  # 22.5 degrees for octagon
+            # Extract beam configuration
+            beam_spacing = beam_config.get('spacing', 1200)  # Default 1200mm spacing
+            beam_width = beam_config.get('width', 140)  # Default 140mm width
+            beam_height = beam_config.get('height', 240)  # Default 240mm height
             
-            for beam_data in support_config['additional_beams']:
-                offset = beam_data['offset']
+            # Calculate number of beams needed based on platform width
+            platform_width = platform_bb.YLength
+            num_beams = max(0, int((platform_width - beam_width) / beam_spacing) - 1)
+            
+            # Create beams on both sides of central beam
+            for i in range(num_beams):
+                # Calculate offset from center
+                offset = beam_spacing * (i + 1)
                 
-                # Calculate beam length at this offset using octagon geometry
-                y = abs(offset)
-                if y >= radius * math.cos(angle):
-                    print(f"Skipping beam at offset {y/304.8:.1f}' - beyond safe platform bounds")
-                    continue
+                # Create positive side beam
+                pos_beam = self._create_beam(
+                    length=platform_bb.XLength,
+                    width=beam_width,
+                    height=beam_height,
+                    position=Base.Vector(
+                        platform_bb.XMin,
+                        platform_bb.YCenter + offset,
+                        platform_bb.ZMin
+                    )
+                )
                 
-                # Calculate safe beam length (80% of theoretical maximum for
-                max_length = 2 * (radius * math.cos(angle) - y * math.tan(angle))
-                beam_length = 0.8 * max_length  # Add safety margin
+                # Create negative side beam
+                neg_beam = self._create_beam(
+                    length=platform_bb.XLength,
+                    width=beam_width,
+                    height=beam_height,
+                    position=Base.Vector(
+                        platform_bb.XMin,
+                        platform_bb.YCenter - offset,
+                        platform_bb.ZMin
+                    )
+                )
                 
-                if beam_length > 0:
-                    # Create X-axis parallel beam
-                    beam = Part.makeBox(
-                        beam_length,
-                        beam_config['width'],
-                        beam_config['height'],
-                        Base.Vector(
-                            -beam_length/2,  # Center the beam
-                            -beam_config['width']/2 + offset,
-                            self.platform_config['elevation'] - beam_config['height']
-                        )
-                    )  # Added missing closing parenthesis
+                # Add to created objects
+                self.created_objects.extend([pos_beam.Name, neg_beam.Name])
+                
+                # Set beam properties
+                for beam in [pos_beam, neg_beam]:
+                    if 'material' in beam_config:
+                        self._apply_material(beam, beam_config['material'])
                     
-                    beam_obj = self.doc.addObject("Part::Feature", f"Support_Beam_X_{len(self.created_objects)}")
-                    beam_obj.Shape = beam
-                    beam_obj.ViewObject.ShapeColor = self.materials['wood_color']
-                    self.created_objects.append(beam_obj)
-                    print(f"Created support beam at {offset/304.8:.1f}' offset with length {beam_length/304.8:.1f}'")
-            
-            self.doc.recompute()
-            print("Additional support beams created successfully")
-            
         except Exception as e:
-            print(f"Additional support beam creation failed: {str(e)}")
+            print(f"Failed to create additional support beams: {str(e)}")
             raise
+
+    def _create_beam(self, length: float, width: float, height: float, 
+                    position: Base.Vector) -> Any:
+        """Helper method to create a single beam
+        
+        Args:
+            length: Beam length
+            width: Beam width
+            height: Beam height
+            position: Base position vector
+            
+        Returns:
+            Created beam object
+        """
+        beam = Part.makeBox(length, width, height, position)
+        beam_obj = self.doc.addObject("Part::Feature", "Support_Beam")
+        beam_obj.Shape = beam
+        return beam_obj
+
+    def _apply_material(self, obj: Any, material: Dict[str, Any]) -> None:
+        """Apply material properties to an object
+        
+        Args:
+            obj: FreeCAD object to modify
+            material: Dictionary of material properties
+        """
+        if hasattr(obj, "Material"):
+            obj.Material = material
 
     def create_deck_boards(self) -> None:
         """Create individual deck boards with proper spacing and orientation"""
@@ -1821,132 +1868,53 @@ class DeckBuilder:
             raise
 
     def create_parts_list(self) -> None:
-        """Create a parts list annotation on the drawing."""
+        """Create and output a detailed parts list"""
         try:
-            if self.platform and self.created_objects:
-                print("Generating parts list...")
-                parts = self._calculate_parts_list()
+            print("\nParts List:")
+            print("-" * 80)
+            print(f"{'Item':<40} {'Quantity':<10} {'Dimensions':<20} {'Material':<10}")
+            print("-" * 80)
+            
+            parts_dict = {}
+            
+            # Group similar objects
+            for obj in self.created_objects:  # Changed from obj_name to obj
+                if not obj:
+                    continue
                 
-                # Generate formatted text
-                text = "PARTS LIST\n"
-                text += "-" * 40 + "\n\n"
+                # Get object properties
+                bb = obj.Shape.BoundBox
+                dims = f"{bb.XLength:.0f}x{bb.YLength:.0f}x{bb.ZLength:.0f}mm"
                 
-                for category, items in parts.items():
-                    if items:
-                        text += f"{category.upper()}\n"
-                        text += "-" * 20 + "\n"
-                        for item in items:
-                            text += f"1x {item}\n"
-                        text += "\n"
+                # Get base name (remove numbers from end)
+                base_name = ''.join(c for c in obj.Name if not c.isdigit()).rstrip('_')
                 
-                # Calculate text box size based on content
-                line_count = text.count('\n') + 1
-                max_line_length = max(len(line) for line in text.split('\n'))
+                # Create key from name and dimensions
+                key = f"{base_name}_{dims}"
                 
-                # Size calculations (in mm)
-                char_width = 15  # Width per character at 24pt
-                line_height = 30  # Height per line at 24pt
-                padding = 100    # Padding around text
-                
-                width = (max_line_length * char_width) + (padding * 2)  # Double padding for left and right
-                height = (line_count * line_height) + (padding * 2)     # Double padding for top and bottom
-                
-                # Create annotation with offset from platform
-                platform_center = self.platform.Shape.BoundBox.Center
-                placement = Base.Vector(
-                    platform_center.x + self.platform.Shape.BoundBox.XLength,  # Place to the right
-                    platform_center.y,  # Center vertically
-                    self.config['platform']['elevation'] + 500  # Raise above platform
-                )
-                
-                # Adjust text placement to top-left of box
-                text_placement = Base.Vector(
-                    placement.x - width/2 + padding,  # Left align with padding
-                    placement.y + height/2 - padding,  # Top align with padding
-                    placement.z
-                )
-                
-                # Create text annotation
-                annotation = Draft.make_text(text.split('\n'), text_placement)
-                annotation.ViewObject.FontSize = 24  # 24 point font
-                annotation.ViewObject.TextColor = (0.0, 0.0, 0.0)  # Black text
-                annotation.ViewObject.Justification = "Left"
-                
-                # Create border
-                border_points = [
-                    Base.Vector(placement.x - width/2, placement.y - height/2, placement.z),
-                    Base.Vector(placement.x + width/2, placement.y - height/2, placement.z),
-                    Base.Vector(placement.x + width/2, placement.y + height/2, placement.z),
-                    Base.Vector(placement.x - width/2, placement.y + height/2, placement.z),
-                    Base.Vector(placement.x - width/2, placement.y - height/2, placement.z)
-                ]
-                
-                border = Draft.make_wire(border_points, closed=True)
-                border.ViewObject.LineColor = (0.0, 0.0, 0.0)
-                border.ViewObject.LineWidth = 1
-                
-                # Add to created objects
-                self.created_objects.extend([annotation.Name, border.Name])
-                
-                # Force recompute
-                self.doc.recompute()
-                print("Parts list generated successfully")
-                
-            else:
-                print("No platform or parts to list - skipping parts list creation")
-                
+                if key in parts_dict:
+                    parts_dict[key]['quantity'] += 1
+                else:
+                    material = getattr(obj, "Material", {}).get("Name", "Unknown")
+                    parts_dict[key] = {
+                        'name': base_name,
+                        'quantity': 1,
+                        'dimensions': dims,
+                        'material': material
+                    }
+            
+            # Print each item
+            for part_info in parts_dict.values():
+                print(f"{part_info['name']:<40} {part_info['quantity']:<10} "
+                      f"{part_info['dimensions']:<20} {part_info['material']:<10}")
+            
+            print("-" * 80)
+            print(f"Total unique parts: {len(parts_dict)}")
+            print(f"Total components: {len(self.created_objects)}")
+            
         except Exception as e:
-            print(f"Parts list generation failed: {str(e)}")
+            print(f"Failed to create parts list: {str(e)}")
             raise
-
-    def _calculate_parts_list(self) -> Dict[str, List[str]]:
-        """Calculate list of materials needed for the deck."""
-        parts = {
-            'Lumber': [],
-            'Hardware': [],
-            'Concrete': [],
-            'Metal': []
-        }
-        
-        # Platform boards
-        board_count = len([obj for obj in self.created_objects if obj.Name.startswith('Deck_Board_')])
-        parts['Lumber'].append(f"{board_count} - 2x8 Deck Boards @ {self.config['platform']['octagonal_diameter']/304.8:.1f}' length")
-        
-        # Joists
-        joist_count = len([obj for obj in self.created_objects if obj.Name.startswith('Joist_')])
-        parts['Lumber'].append(f"{joist_count} - 2x8 Floor Joists @ {self.config['platform']['octagonal_diameter']/304.8:.1f}' length")
-        
-        # Support beams
-        beam_count = len([obj for obj in self.created_objects if obj.Name.startswith('Beam_')])
-        support_beam_count = len([obj for obj in self.created_objects if obj.Name.startswith('Support_Beam_')])
-        parts['Lumber'].append(f"{beam_count + support_beam_count} - 4x8 Support Beams @ {self.config['platform']['octagonal_diameter']/304.8:.1f}' length")
-        
-        # Blocking
-        blocking_count = len([obj for obj in self.created_objects if obj.Name.startswith('Blocking_')])
-        parts['Lumber'].append(f"{blocking_count} - 2x8 Blocking @ 16\" length")
-        
-        # Posts
-        post_count = len([obj for obj in self.created_objects if obj.Name.startswith('Post_')])
-        parts['Lumber'].append(f"{post_count} - 4x4 Posts @ {self.config['railing']['height']/25.4:.1f}\" height")
-        
-        # Hardware
-        fastener_count = len([obj for obj in self.created_objects if obj.Name.startswith('Fastener_')])
-        parts['Hardware'].append(f"{fastener_count} - Deck Screws")
-        
-        bracket_count = len([obj for obj in self.created_objects if 'Bracket_' in obj.Name])
-        parts['Hardware'].append(f"{bracket_count} - Joist/Beam Brackets")
-        
-        # Concrete
-        footing_count = len([obj for obj in self.created_objects if obj.Name.startswith('Footing_')])
-        concrete_volume = footing_count * (math.pi * (self.config['footings']['base_diameter']/2)**2 * 
-                                         self.config['footings']['depth']) / (1728 * 25.4**3)  # Convert to cubic yards
-        parts['Concrete'].append(f"{footing_count} - Footings ({concrete_volume:.1f} cubic yards total)")
-        
-        # Metal bracing
-        brace_count = len([obj for obj in self.created_objects if obj.Name.startswith('Brace_')])
-        parts['Metal'].append(f"{brace_count} - Cross Braces @ 32\" length")
-        
-        return parts
 
 if __name__ == '__main__':
     try:
