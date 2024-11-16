@@ -194,73 +194,45 @@ class DeckBuilder:
             print(f"Feature validation failed: {str(e)}")
             raise
 
-    def _cleanup_existing_objects(self):
-        """Remove ALL existing deck objects and force redraw"""
+    def _cleanup_existing_objects(self) -> None:
+        """Remove all existing deck objects from the document"""
         try:
-            # Comprehensive list of ALL possible object prefixes
-            cleanup_prefixes = [
-                # Platform components
-                "Platform", "Octagon", "Square", "Deck_Board", 
-                
-                # Structural components
-                "Post_", "Beam_", "Support_Beam_", "Joist_", "Brace_",
-                "Blocking_", "Rim_", "Header_",
-                
-                # Hardware components
-                "Fastener_", "Hanger_", "Bracket_", "PostBracket_", 
-                "BeamBracket_", "JoistHanger_",
-                
-                # Foundation components
-                "Footing_", "Pier_", "Foundation_",
-                
-                # Railing components
-                "Rail_", "Picket_", "Baluster_", "HandRail_",
-                
-                # Additional features
-                "Skirting_", "Panel_", "Trim_", "Cap_",
-                "Ventilation_", "Access_", "Step_", "Stair_",
-                
-                # Dome components
-                "Dome", "DomeStrut_", "DomePanel_", "DomeRib_",
-                
-                # Generic/Legacy prefixes
-                "Deck_", "Support_"
-            ]
-            
-            # Find all objects to remove
+            num_objects = len(self.doc.Objects)
+            print(f"Cleaning up {num_objects} existing objects...")
             objects_to_remove = []
-            for obj in self.doc.Objects:
-                for prefix in cleanup_prefixes:
-                    if obj.Name.startswith(prefix):
-                        objects_to_remove.append(obj)
-                        break
             
+            # Collect all objects that match our naming patterns
+            for obj in self.doc.Objects:
+                if any(obj.Name.startswith(prefix) for prefix in [
+                    "Deck_", "Platform", "Beam_", "Support_", "Joist_",
+                    "Brace_", "Footing_", "Post_", "Rail_", "Picket_",
+                    "Blocking_", "Fastener_", "Hanger_", "PostBracket_",
+                    "BeamBracket_", "Parts_List"
+                ]):
+                    objects_to_remove.append(obj)
+            
+            # Remove collected objects
             if objects_to_remove:
-                print(f"Cleaning up {len(objects_to_remove)} existing objects...")
+                # First remove any dependencies
+                for obj in objects_to_remove:
+                    if hasattr(obj, 'InList'):
+                        for parent in obj.InList:
+                            if parent in self.doc.Objects:
+                                self.doc.removeObject(parent.Name)
                 
-                # Remove objects one at a time and recompute periodically
-                for i, obj in enumerate(objects_to_remove):
-                    try:
+                # Then remove the objects themselves
+                for obj in objects_to_remove:
+                    if obj.Name in self.doc.Objects:
                         self.doc.removeObject(obj.Name)
-                        
-                        # Recompute every 100 objects or at the end
-                        if (i + 1) % 100 == 0 or i == len(objects_to_remove) - 1:
-                            self.doc.recompute()
-                            
-                    except Exception as e:
-                        print(f"Failed to remove {obj.Name}: {str(e)}")
-                
-                # Clear internal references
-                self.platform = None
-                self.created_objects = []
-                
-                # Final recompute and GUI update
-                self.doc.recompute()
-                
-                if App.GuiUp:
-                    Gui.updateGui()
-                    Gui.ActiveDocument.ActiveView.refresh()
-                
+            
+            # Force recompute and update view
+            self.doc.recompute()
+            if Gui.ActiveDocument and Gui.ActiveDocument.ActiveView:
+                Gui.SendMsgToActiveView("ViewFit")
+            
+            # Reset created objects list
+            self.created_objects = []
+            
             print("Cleanup completed")
             
         except Exception as e:
@@ -518,7 +490,9 @@ class DeckBuilder:
                     brace_config['spacing'],
                     10,
                     Base.Vector(
-                        start_pos
+                        start_pos,
+                        platform_bb.YMin,
+                        self.platform_config['elevation'] - joist_height
                     )
                 )
                 
@@ -1834,6 +1808,96 @@ class DeckBuilder:
             print(f"Beam bracket creation failed: {str(e)}")
             raise
 
+    def create_parts_list(self) -> None:
+        """Create a parts list annotation in the 3D view."""
+        try:
+            print("Generating parts list...")
+            if hasattr(self, 'platform') and self.platform and self.created_objects:
+                # Get platform bounds
+                platform_bb = self.platform.Shape.BoundBox
+                
+                # Calculate placement - offset from deck edge by 2 feet
+                x_offset = platform_bb.XMax + 609.6  # 24 inches = 609.6mm
+                y_offset = platform_bb.YMin  # Align with platform edge
+                z_offset = platform_bb.ZMax  # Place at deck height
+                
+                # Create text content
+                text = ["MATERIALS ORDER LIST:", ""]
+                for category, items in self._calculate_parts_list().items():
+                    text.append(f"{category}:")
+                    text.extend(f"  - {item}" for item in items)
+                    text.append("")
+                
+                # Create text using Draft.make_text()
+                annotation = Draft.make_text(text, App.Vector(x_offset, y_offset, z_offset))
+                
+                # Set properties
+                annotation.Label = "Parts_List"
+                annotation.ViewObject.FontSize = 12
+                
+                # Add to created objects
+                self.created_objects.append(annotation.Name)
+                
+                # Force recompute
+                self.doc.recompute()
+                print("Parts list generated successfully")
+                
+            else:
+                print("No platform or parts to list - skipping parts list creation")
+                
+        except Exception as e:
+            print(f"Parts list generation failed: {str(e)}")
+            raise
+
+    def _calculate_parts_list(self) -> Dict[str, List[str]]:
+        """Calculate list of materials needed for the deck."""
+        parts = {
+            'Lumber': [],
+            'Hardware': [],
+            'Concrete': [],
+            'Metal': []
+        }
+        
+        # Platform boards
+        board_count = len([obj for obj in self.created_objects if obj.Name.startswith('Deck_Board_')])
+        parts['Lumber'].append(f"{board_count} - 2x8 Deck Boards @ {self.config['platform']['octagonal_diameter']/304.8:.1f}' length")
+        
+        # Joists
+        joist_count = len([obj for obj in self.created_objects if obj.Name.startswith('Joist_')])
+        parts['Lumber'].append(f"{joist_count} - 2x8 Floor Joists @ {self.config['platform']['octagonal_diameter']/304.8:.1f}' length")
+        
+        # Support beams
+        beam_count = len([obj for obj in self.created_objects if obj.Name.startswith('Beam_')])
+        support_beam_count = len([obj for obj in self.created_objects if obj.Name.startswith('Support_Beam_')])
+        parts['Lumber'].append(f"{beam_count + support_beam_count} - 4x8 Support Beams @ {self.config['platform']['octagonal_diameter']/304.8:.1f}' length")
+        
+        # Blocking
+        blocking_count = len([obj for obj in self.created_objects if obj.Name.startswith('Blocking_')])
+        parts['Lumber'].append(f"{blocking_count} - 2x8 Blocking @ 16\" length")
+        
+        # Posts
+        post_count = len([obj for obj in self.created_objects if obj.Name.startswith('Post_')])
+        parts['Lumber'].append(f"{post_count} - 4x4 Posts @ {self.config['railing']['height']/25.4:.1f}\" height")
+        
+        # Hardware
+        fastener_count = len([obj for obj in self.created_objects if obj.Name.startswith('Fastener_')])
+        parts['Hardware'].append(f"{fastener_count} - Deck Screws")
+        
+        bracket_count = len([obj for obj in self.created_objects if 'Bracket_' in obj.Name])
+        parts['Hardware'].append(f"{bracket_count} - Joist/Beam Brackets")
+        
+        # Concrete
+        footing_count = len([obj for obj in self.created_objects if obj.Name.startswith('Footing_')])
+        concrete_volume = footing_count * (math.pi * (self.config['footings']['base_diameter']/2)**2 * 
+                                         self.config['footings']['depth']) / (1728 * 25.4**3)  # Convert to cubic yards
+        parts['Concrete'].append(f"{footing_count} - Footings ({concrete_volume:.1f} cubic yards total)")
+        
+        # Metal bracing
+        brace_count = len([obj for obj in self.created_objects if obj.Name.startswith('Brace_')])
+        parts['Metal'].append(f"{brace_count} - Cross Braces @ 32\" length")
+        
+        return parts
+
 if __name__ == '__main__':
     try:
         # Initialize the document
@@ -1853,50 +1917,58 @@ if __name__ == '__main__':
             print("Creating deck platform...")
             initial_count = len(deck.created_objects)
             deck.create_platform()
-            print(f"Platform objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Platform objects created: {created_names}")
         
         if any([features['central_beam'], features['floor_joists'], 
                features['rim_joists'], features['cross_bracing']]):
             print("Creating support structure...")
             initial_count = len(deck.created_objects)
             deck.create_support_structure()
-            print(f"Support objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Support objects created: {created_names}")
         
         if features['footings']:
             print("Creating footings...")
             initial_count = len(deck.created_objects)
             deck.create_footings()
-            print(f"Footing objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Footing objects created: {created_names}")
         
         if features['railing']:
             print("Creating railing system...")
             initial_count = len(deck.created_objects)
             deck.create_railing()
-            print(f"Railing objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Railing objects created: {created_names}")
         
         if features['skirting']:
             print("Creating skirting...")
             initial_count = len(deck.created_objects)
             deck.create_skirting()
-            print(f"Skirting objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Skirting objects created: {created_names}")
         
         if features['geodesic_dome']:
             print("Creating geodesic dome...")
             initial_count = len(deck.created_objects)
             deck.create_geodesic_dome()
-            print(f"Dome objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Dome objects created: {created_names}")
         
         if features['show_hardware']:
             print("Creating hardware...")
             initial_count = len(deck.created_objects)
             deck.create_hardware()
-            print(f"Hardware objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Hardware objects created: {created_names}")
         
         if features['show_blocking']:
             print("Creating blocking...")
             initial_count = len(deck.created_objects)
             deck.create_blocking()
-            print(f"Blocking objects created: {[obj.Name for obj in deck.created_objects[initial_count:]]}")
+            created_names = [obj.Name for obj in deck.created_objects[initial_count:]]
+            print(f"Blocking objects created: {created_names}")
             
         # Validate construction
         if not deck._validate_structural_integrity():
@@ -1908,6 +1980,9 @@ if __name__ == '__main__':
         
         print(f"Total objects created: {len(deck.created_objects)}")
         print("Deck creation completed successfully")
+        
+        # Create parts list after all components
+        deck.create_parts_list()
         
     except Exception as e:
         print(f"Deck creation failed: {str(e)}")
